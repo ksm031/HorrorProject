@@ -2,7 +2,7 @@
    KIT — generates a daldongne alley (wall segments + facade features) for Ray.
    ========================================================================== */
 function alleyKit(seed, o = {}) {
-  const r = rng(seed), out = { [-1]: [], [1]: [] }, w0 = o.w || 11, sprays = (o.spray || ['철거', '공가', '위험']).slice();
+  const r = rng(seed), out = { [-1]: [], [1]: [] }, w0 = o.w || 11, mc = { n: (seed * 7) % 5 }, nextMat = d => o.mats ? o.mats[(mc.n++) % o.mats.length] : d, sprays = (o.spray || ['철거', '공가', '위험']).slice();
   const pick = a => a[(r() * a.length) | 0];
   for (const sd of [-1, 1]) {
     let z = o.z0 || 2, prevW = w0, n = 0;
@@ -18,12 +18,12 @@ function alleyKit(seed, o = {}) {
         prevW = w; z = z1; n++; continue;
       }
       if (kind === 'wall') {
-        Object.assign(seg, { h: 17 + r() * 5, mat: r() < 0.6 ? 'block' : 'cement' });
+        Object.assign(seg, { h: 17 + r() * 5, mat: o.mats ? ({ brick: 'brick', block: 'block', cement: 'cement' }[nextMat('block')] || 'cement') : r() < 0.6 ? 'block' : 'cement' });
         if (r() < 0.6) { const g0 = z + 3 + r() * (len - 15); seg.feat.push({ k: 'gate', u0: g0, u1: g0 + 9 + r() * 3, v0: 0, v1: 14 + r() * 2 }, { k: 'plate', u0: g0 + 12.5, u1: g0 + 14.5, v0: 11, v1: 13 }); }
         // house behind the wall
-        out[sd].push({ z0: z, z1, w: w + 7, h: 32 + r() * 16, mat: pick(['teal', 'cement', 'brick']), seed: sg + 2, feat: r() < 0.7 ? [{ k: 'win', u0: z + 4, u1: z + 10, v0: 22, v1: 29, lit: r() < (o.litP || 0.12), curtain: 1, bars: r() < 0.5 }] : [] });
+        out[sd].push({ z0: z, z1, w: w + 7, h: 32 + r() * 16, mat: nextMat(pick(['teal', 'cement', 'brick'])), seed: sg + 2, feat: r() < 0.7 ? [{ k: 'win', u0: z + 4, u1: z + 10, v0: 22, v1: 29, lit: r() < (o.litP || 0.12), curtain: 1, bars: r() < 0.5 }] : [] });
       } else {
-        Object.assign(seg, { h: 26 + r() * 16, mat: pick(['teal', 'cement', 'cement', 'brick']) });
+        Object.assign(seg, { h: 26 + r() * 16, mat: nextMat(pick(['teal', 'cement', 'cement', 'brick'])) });
         for (let u = z + 3; u < z1 - 8; u += 10 + r() * 8) {
           const q = r();
           if (q < 0.3) seg.feat.push({ k: 'win', u0: u, u1: u + 5 + r() * 3, v0: 15 + r() * 4, v1: 22 + r() * 3, lit: r() < (o.litP || 0.1), curtain: 1, bars: r() < 0.7 });

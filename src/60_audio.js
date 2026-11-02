@@ -126,12 +126,12 @@ function buildSoundEvents() {
   // S4: running (12 fps, contact every 4th frame), breathing, flaps, the basin, lamps dying behind her, marks
   for (let f = 0; f < 15 * 12; f++) { const t = 33.5 + f / 12; if (f % 4 === 0) ev(t, 'step', { run: true }); if (f % 8 === 2) ev(t, 'breath', { in: f % 16 === 2, v: 1.2, d: 0.3 }); }
   const lampDeath = (t, pan) => { ev(t, 'click', { pan }); ev(t + 0.34, 'pop', { pan }); };
-  for (const l of S4A.lamps) { const t = s4aPass(l); if (t < 38) lampDeath(t, l.x > 0 ? 0.3 : -0.3); }
-  for (const lz of [48, 86]) { const t = S4A.a + (lz - S4A.z0) / S4A.v; if (t < 38) { ev(t - 0.1, 'flap', { pan: -0.2 }); ev(t + 0.12, 'flap', { pan: 0.2 }); } }
+  for (const l of S4A.lamps) if (l.die < 38) lampDeath(l.die, l.x > 0 ? 0.3 : -0.3);
+  for (const lz of [52, 96]) { const t = S4A.a + (S4A.z0 - lz) / S4A.v; if (t > 33.5 && t < 38) { ev(t - 0.1, 'flap', { pan: -0.2 }); ev(t + 0.12, 'flap', { pan: 0.2 }); } }
   for (const l of S4B.lamps) { const t = s4bPass(l.z); if (t < 42.6) lampDeath(t, l.x > 0 ? 0.4 : -0.4); }
-  ev(s4bPass(S4B.basin.z - 6), 'basin', { pan: -0.3 });
+  ev(s4bGirl(S4B.basin.z - 6), 'basin', { pan: -0.3 });
   for (const l of S4C.lamps) { const t = s4cPass(l.z); if (t < 48.5) lampDeath(t, l.x > 0 ? 0.4 : -0.4); }
-  for (const t of [35.9, 36.75, 40.4, 41.4, 44.6, 46.0]) ev(t, 'thud', { v: 0.5 });
+  for (const [T] of S4A.marks.concat(S4B.marks)) ev(T, 'thud', { v: 0.45 }); for (const T of [43.7, 44.7, 45.6, 46.4]) ev(T, 'thud', { v: 0.5 });
   ev(47.2, 'lunge');
   // S5: stairs (stone), heavy breath, the giant's stepped rise, wires snap
   for (let f = 0; f < 11 * 12; f++) { const t = 48.5 + f / 12; if (f % 4 === 0) ev(t, 'step', { run: true, stone: true, v: clamp(30 / (14 + (t - 48.5) * 6), 0.35, 1) }); if (f % 8 === 3) ev(t, 'breath', { in: f % 16 === 3, v: 1.4, d: 0.3 }); }
@@ -153,7 +153,7 @@ function layerGains(t) {
   if (t < 60.5) out.air = t < 24 ? 0.08 : t < 33.5 ? 0.04 : 0.07;
   if (t < 60.5) out.hum = t < 9 ? 0.02 : t < 24 ? 0.035 : t < 33.5 ? 0.07 : t < 48.5 ? 0.03 : 0.05;
   if (t >= 9 && t < 24) out.buzz = s2LampOn(t) ? 0.022 : 0;
-  if (t >= 33.5 && t < 48.5) { const on = t < 38 ? S4A.lamps.some(l => lampLife(s4aPass(l), t)) : t < 42.6 ? S4B.lamps.some(l => lampLife(s4bPass(l.z), t)) : S4C.lamps.some(l => lampLife(s4cPass(l.z), t)); out.buzz = on ? 0.012 : 0; }
+  if (t >= 33.5 && t < 48.5) { const on = t < 38 ? S4A.lamps.some(l => lampLife(l.die, t)) : t < 42.6 ? S4B.lamps.some(l => lampLife(s4bPass(l.z), t)) : S4C.lamps.some(l => lampLife(s4cPass(l.z), t)); out.buzz = on ? 0.012 : 0; }
   if (t >= 31.9 && t < 33.5) { out.hum = 0; out.air = 0; out.drone = 0; out.buzz = 0; }
   if (t >= 15.6 && t < 60.5 && !(t >= 31.9 && t < 33.5)) out.drone = t < 24 ? 0.06 : t < 33.5 ? 0.1 : t < 48.5 ? 0.08 : 0.08 + clamp((t - 50) / 9, 0, 1) * 0.16;
   if (t >= 70.12 && t < 74.6) { out.stat = t < 70.9 ? 0.09 : 0.022; out.whine = 0.006; }

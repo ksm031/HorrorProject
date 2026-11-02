@@ -39,13 +39,14 @@ function drawGhost(b, x, y, s, pose, o = {}) {
   const hx = x, hy = y - drop * s;
   const L0 = p.lean * D2R, sx = hx + Math.sin(L0) * 34 * s * f, sy = hy - Math.cos(L0) * 34 * s;
   const ax = Math.cos(L0) * f, ay = Math.sin(L0);
-  const th = v => Math.max(1, v * s);
+  const th = v => Math.max(v >= 2 ? 1.5 : v >= 1.2 ? 1.15 : 0.85, v * s); // limbs never thinner than ~2px: it must read from far away
   const arm = (A, side) => {
     const m = fr ? side : 1, ua = A[0] * m, fa = A[1] * m, wa = A[2] * m;
     const _u = 0, shx = sx + ax * 4.6 * s * side, shy = sy + ay * 4.6 * s * side - 1.2 * s;
     const [ex, ey] = dir(ua, 27), [wx, wy] = dir(ua + fa, 27), E = [shx + ex, shy + ey], Wr = [E[0] + wx, E[1] + wy];
     limbT(b, shx, shy, E[0], E[1], th(1.7), th(1.1), c); limbT(b, E[0], E[1], Wr[0], Wr[1], th(1.2), th(0.8), c);
     const [px, py] = dir(ua + fa + wa, 4), P0 = [Wr[0] + px, Wr[1] + py], fs = fr ? side : 1; limbT(b, Wr[0], Wr[1], P0[0], P0[1], th(1.0), th(1.1), c);
+    if (s < 0.75) { const [hx2, hy2] = dir(ua + fa + wa + 10, 9); limbT(b, P0[0], P0[1], P0[0] + hx2, P0[1] + hy2, th(0.9), 0.4, c); return Wr; } // far: one long tapered hand
     for (let k = 0; k < 4; k++) {
       const a1 = ua + fa + wa + (k - 1.5) * 9, [k1x, k1y] = dir(a1, 5.5), Kp = [P0[0] + k1x, P0[1] + k1y], [k2x, k2y] = dir(a1 + 22 + k * 4, 5);
       limbT(b, P0[0], P0[1], Kp[0], Kp[1], th(0.45), th(0.35), c); limbT(b, Kp[0], Kp[1], Kp[0] + k2x, Kp[1] + k2y, th(0.35), th(0.15), c);
@@ -77,8 +78,10 @@ function drawGhost(b, x, y, s, pose, o = {}) {
   if (s >= 1.5) { const g = pts.map(([px, py]) => [nx + (px - nx) * 1.18, ny - 3 * s + (py - ny + 3 * s) * 1.12]); poly(b, g, o.gap !== undefined ? o.gap : T); }
   poly(b, pts, c);
   const nearW = arm(p.la || [5, -6, 14], 1);
+  let eyesOut = [];
   if (ef > 0) {
     const eo = (fr ? [[-1.15, -4.2], [1.15, -4.2]] : [[0.6, -4.6], [2.6, -4.2]]).map(([u, v]) => [nx + (u * f * Math.cos(tr) - v * Math.sin(tr)) * s, ny - 3 * s + (u * f * Math.sin(tr) + v * Math.cos(tr)) * s]);
+    eyesOut = eo;
     for (const [ex, ey] of eo) {
       if (s < 1.4) { P(b, ex, ey, ef > 1 ? Y3 : R5); if (ef > 1 && s >= 0.8) P(b, ex + f, ey, R5); }
       else { const r = Math.max(1, ri(s * 0.55)); ell(b, ri(ex), ri(ey), r + 1, r, R4); ell(b, ri(ex), ri(ey), r, Math.max(0, r - 1), ef > 1 ? R5 : R4); P(b, ex, ey, ef > 1 ? Y3 : R5); if (r > 1) P(b, ex + 1, ey, Y2); }
@@ -88,7 +91,7 @@ function drawGhost(b, x, y, s, pose, o = {}) {
     const r = rng(1 + (o.t || 0) * 7);
     for (let k = 0; k < 6 + s * 5; k++) { const ax2 = nx + (r() - 0.5) * 16 * s, ay2 = ny - 8 * s - r() * 22 * s; P(b, ax2, ay2, r() < 0.5 ? K1 : T0); if (r() < 0.3) P(b, ax2, ay2 - 1, K1); }
   }
-  return { head: [nx, ny - 3 * s], sh: [sx, sy], hand: nearW };
+  return { head: [nx, ny - 3 * s], sh: [sx, sy], hand: nearW, eyes: eyesOut };
 }
 function smoke(b, x0, y0, w, h, seed, t) {
   for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {

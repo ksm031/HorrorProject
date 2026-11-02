@@ -893,7 +893,7 @@ function pole3(b, ray, x, z, h, col = K1, hi = G0) {
    KIT — generates a daldongne alley (wall segments + facade features) for Ray.
    ========================================================================== */
 function alleyKit(seed, o = {}) {
-  const r = rng(seed), out = { [-1]: [], [1]: [] }, w0 = o.w || 11, sprays = (o.spray || ['철거', '공가', '위험']).slice();
+  const r = rng(seed), out = { [-1]: [], [1]: [] }, w0 = o.w || 11, mc = { n: (seed * 7) % 5 }, nextMat = d => o.mats ? o.mats[(mc.n++) % o.mats.length] : d, sprays = (o.spray || ['철거', '공가', '위험']).slice();
   const pick = a => a[(r() * a.length) | 0];
   for (const sd of [-1, 1]) {
     let z = o.z0 || 2, prevW = w0, n = 0;
@@ -909,12 +909,12 @@ function alleyKit(seed, o = {}) {
         prevW = w; z = z1; n++; continue;
       }
       if (kind === 'wall') {
-        Object.assign(seg, { h: 17 + r() * 5, mat: r() < 0.6 ? 'block' : 'cement' });
+        Object.assign(seg, { h: 17 + r() * 5, mat: o.mats ? ({ brick: 'brick', block: 'block', cement: 'cement' }[nextMat('block')] || 'cement') : r() < 0.6 ? 'block' : 'cement' });
         if (r() < 0.6) { const g0 = z + 3 + r() * (len - 15); seg.feat.push({ k: 'gate', u0: g0, u1: g0 + 9 + r() * 3, v0: 0, v1: 14 + r() * 2 }, { k: 'plate', u0: g0 + 12.5, u1: g0 + 14.5, v0: 11, v1: 13 }); }
         // house behind the wall
-        out[sd].push({ z0: z, z1, w: w + 7, h: 32 + r() * 16, mat: pick(['teal', 'cement', 'brick']), seed: sg + 2, feat: r() < 0.7 ? [{ k: 'win', u0: z + 4, u1: z + 10, v0: 22, v1: 29, lit: r() < (o.litP || 0.12), curtain: 1, bars: r() < 0.5 }] : [] });
+        out[sd].push({ z0: z, z1, w: w + 7, h: 32 + r() * 16, mat: nextMat(pick(['teal', 'cement', 'brick'])), seed: sg + 2, feat: r() < 0.7 ? [{ k: 'win', u0: z + 4, u1: z + 10, v0: 22, v1: 29, lit: r() < (o.litP || 0.12), curtain: 1, bars: r() < 0.5 }] : [] });
       } else {
-        Object.assign(seg, { h: 26 + r() * 16, mat: pick(['teal', 'cement', 'cement', 'brick']) });
+        Object.assign(seg, { h: 26 + r() * 16, mat: nextMat(pick(['teal', 'cement', 'cement', 'brick'])) });
         for (let u = z + 3; u < z1 - 8; u += 10 + r() * 8) {
           const q = r();
           if (q < 0.3) seg.feat.push({ k: 'win', u0: u, u1: u + 5 + r() * 3, v0: 15 + r() * 4, v1: 22 + r() * 3, lit: r() < (o.litP || 0.1), curtain: 1, bars: r() < 0.7 });
@@ -1279,7 +1279,9 @@ function girlFront(b, cx, fy, o) {
   const hb = [[-3.9, -37.4], [-4.6, -39], [-4.6, -41.4], [-4.2, -43.8], [-3.2, -45.6], [-1.6, -46.6], [1.6, -46.6], [3.2, -45.6], [4.2, -43.8], [4.6, -41.4], [4.6, -39], [3.9, -37.4]];
   pg(hb, HAIR);
   pg([[-2.6, -42.2], [2.6, -42.2], [2.6, -39], [1.4, -37.2], [-1.4, -37.2], [-2.6, -39]], SKIND);
-  pg([[-2.6, -42.4], [2.6, -42.4], [2.6, -41.2], [-2.6, -41.2]], HAIR); // bangs
+  pg([[0.6, -41], [2.6, -41], [2.6, -39], [1.4, -37.2], [0.4, -37.4]], Y0); // the side of the face away from the light
+  pg([[-2.6, -42.6], [2.6, -42.6], [2.6, -40.6], [1.2, -40.9], [0, -40.5], [-1.4, -40.9], [-2.6, -40.6]], HAIR); // heavy bangs: eyes in shadow
+  pg([[-1.6, -38.6], [1.6, -38.6], [1.0, -37.4], [-1.0, -37.4]], Y0); // chin shadow
   pg([[-3.0, -44.6], [-0.8, -45.6], [1.2, -45.4], [-0.6, -44.6]], HAIRH);
 }
 
@@ -1325,13 +1327,14 @@ function drawGhost(b, x, y, s, pose, o = {}) {
   const hx = x, hy = y - drop * s;
   const L0 = p.lean * D2R, sx = hx + Math.sin(L0) * 34 * s * f, sy = hy - Math.cos(L0) * 34 * s;
   const ax = Math.cos(L0) * f, ay = Math.sin(L0);
-  const th = v => Math.max(1, v * s);
+  const th = v => Math.max(v >= 2 ? 1.5 : v >= 1.2 ? 1.15 : 0.85, v * s); // limbs never thinner than ~2px: it must read from far away
   const arm = (A, side) => {
     const m = fr ? side : 1, ua = A[0] * m, fa = A[1] * m, wa = A[2] * m;
     const _u = 0, shx = sx + ax * 4.6 * s * side, shy = sy + ay * 4.6 * s * side - 1.2 * s;
     const [ex, ey] = dir(ua, 27), [wx, wy] = dir(ua + fa, 27), E = [shx + ex, shy + ey], Wr = [E[0] + wx, E[1] + wy];
     limbT(b, shx, shy, E[0], E[1], th(1.7), th(1.1), c); limbT(b, E[0], E[1], Wr[0], Wr[1], th(1.2), th(0.8), c);
     const [px, py] = dir(ua + fa + wa, 4), P0 = [Wr[0] + px, Wr[1] + py], fs = fr ? side : 1; limbT(b, Wr[0], Wr[1], P0[0], P0[1], th(1.0), th(1.1), c);
+    if (s < 0.75) { const [hx2, hy2] = dir(ua + fa + wa + 10, 9); limbT(b, P0[0], P0[1], P0[0] + hx2, P0[1] + hy2, th(0.9), 0.4, c); return Wr; } // far: one long tapered hand
     for (let k = 0; k < 4; k++) {
       const a1 = ua + fa + wa + (k - 1.5) * 9, [k1x, k1y] = dir(a1, 5.5), Kp = [P0[0] + k1x, P0[1] + k1y], [k2x, k2y] = dir(a1 + 22 + k * 4, 5);
       limbT(b, P0[0], P0[1], Kp[0], Kp[1], th(0.45), th(0.35), c); limbT(b, Kp[0], Kp[1], Kp[0] + k2x, Kp[1] + k2y, th(0.35), th(0.15), c);
@@ -1363,8 +1366,10 @@ function drawGhost(b, x, y, s, pose, o = {}) {
   if (s >= 1.5) { const g = pts.map(([px, py]) => [nx + (px - nx) * 1.18, ny - 3 * s + (py - ny + 3 * s) * 1.12]); poly(b, g, o.gap !== undefined ? o.gap : T); }
   poly(b, pts, c);
   const nearW = arm(p.la || [5, -6, 14], 1);
+  let eyesOut = [];
   if (ef > 0) {
     const eo = (fr ? [[-1.15, -4.2], [1.15, -4.2]] : [[0.6, -4.6], [2.6, -4.2]]).map(([u, v]) => [nx + (u * f * Math.cos(tr) - v * Math.sin(tr)) * s, ny - 3 * s + (u * f * Math.sin(tr) + v * Math.cos(tr)) * s]);
+    eyesOut = eo;
     for (const [ex, ey] of eo) {
       if (s < 1.4) { P(b, ex, ey, ef > 1 ? Y3 : R5); if (ef > 1 && s >= 0.8) P(b, ex + f, ey, R5); }
       else { const r = Math.max(1, ri(s * 0.55)); ell(b, ri(ex), ri(ey), r + 1, r, R4); ell(b, ri(ex), ri(ey), r, Math.max(0, r - 1), ef > 1 ? R5 : R4); P(b, ex, ey, ef > 1 ? Y3 : R5); if (r > 1) P(b, ex + 1, ey, Y2); }
@@ -1374,7 +1379,7 @@ function drawGhost(b, x, y, s, pose, o = {}) {
     const r = rng(1 + (o.t || 0) * 7);
     for (let k = 0; k < 6 + s * 5; k++) { const ax2 = nx + (r() - 0.5) * 16 * s, ay2 = ny - 8 * s - r() * 22 * s; P(b, ax2, ay2, r() < 0.5 ? K1 : T0); if (r() < 0.3) P(b, ax2, ay2 - 1, K1); }
   }
-  return { head: [nx, ny - 3 * s], sh: [sx, sy], hand: nearW };
+  return { head: [nx, ny - 3 * s], sh: [sx, sy], hand: nearW, eyes: eyesOut };
 }
 function smoke(b, x0, y0, w, h, seed, t) {
   for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
@@ -1604,7 +1609,7 @@ const FOG_DUSK = { z0: 60, z1: 240, ramp: RM.sky, lvl: 3, max: 0.85 };
 function rayShot(sc) { return once(() => new Ray(sc)); }
 
 /* ---------- S1: from the top of the hill, looking down the alley at the city ---------- */
-const S1SC = { f: 290, vx: 240, vy: 64, camY: 30, slope: -0.13, floorW: 11, floorZ: 172, walls: alleyKit(101, { z0: 6, z1: 176, w: 11, litP: 0.12, spray: ['공가'], gapP: 0.2, ivyP: 0.15, treeP: 0.2 }) };
+const S1SC = { f: 290, vx: 240, vy: 64, camY: 30, slope: -0.13, floorW: 11, floorZ: 172, walls: alleyKit(101, { z0: 6, z1: 176, w: 11, litP: 0.12, spray: ['공가'], gapP: 0.2, ivyP: 0.15, treeP: 0.2, mats: ['teal', 'cement', 'teal', 'brick', 'cement', 'teal'] }) };
 const S1R = rayShot(S1SC);
 const S1Back = once(() => { // beyond the hill: dusk, mountains, the living city below
   const b = new Buf(W, H, T1);
@@ -1745,47 +1750,58 @@ function girlRunAway(ray, lights, amb, X, z, t, climb = 0) {
   girlBack(gb, ri(sx), ri(sy) - (ph % 4 === 2 ? Math.max(1, ri(s)) : 0), { s, lift: [RUNL[ph] * (1 + climb), RUNL[(ph + 4) % 8] * (1 + climb)], arm: RUNA[ph], sway: RUNS[ph] });
   volumize(gb); litSprite(fb, gb, ray.light(lights, amb, X, ray.ground(z) + 10, z));
 }
+// the figure placed in a scene: contact shadow, soot haze round the silhouette, a cold rim,
+// and its eyes throwing a stepped red glow onto whatever is near them
 function ghostAt(ray, x, z, pose, o = {}) {
-  const [sx, sy] = ray.project(x, ray.ground(z), z), gb = new Buf(W, H);
-  drawGhost(gb, sx, sy, 34 * ray.sc.f / z / 104, pose, { eyes: 2, ...o }); rimLight(gb, o.rimC || T3); blit(fb, gb, 0, 0);
+  const [sx, sy] = ray.project(x, ray.ground(z), z), sc = 34 * ray.sc.f / z / 104, gb = new Buf(W, H);
+  for (let i = -ri(9 * sc); i <= ri(9 * sc); i++) { const w = Math.max(1, ri(2.2 * sc * (1 - Math.abs(i) / (9.5 * sc)))); for (let j = 0; j < w; j++) if (bay(sx + i, sy + j) < 0.75) P(fb, sx + i, sy - j + 1, K0); }
+  const m = drawGhost(gb, sx, sy, sc, pose, { eyes: 2, t: step(o.t || 0, 4), ...o });
+  smoke(gb, 0, 0, W, H, 9, step(o.t || 0, 6)); smoke(gb, 0, 0, W, H, 11, step(o.t || 0, 6) + 3);
+  rimLight(gb, o.rimC || T3);
+  for (const [ex, ey] of m.eyes) { const r1 = 3 + sc * 4, r2 = 5 + sc * 8; for (let y = ri(ey - r2); y <= ey + r2; y++) for (let xx = ri(ex - r2); xx <= ex + r2; xx++) { if (xx < 0 || y < 0 || xx >= W || y >= H) continue; const d = Math.hypot(xx - ex, y - ey) + (bay(xx, y) - 0.5) * 2; const k = y * W + xx, c = fb.d[k]; if (EMISSIVE[c]) continue; if (d < r1) fb.d[k] = RED[UP[c]] === K0 ? R0 : RED[UP[c]]; else if (d < r2 && bay(xx, y) < 0.5) fb.d[k] = RED[c] === K0 ? K1 : RED[c]; } }
+  blit(fb, gb, 0, 0);
+  return m;
 }
 // lamps that die once she has run past them: stutter (≤3 flashes/s), then dark
 function lampLife(passT, t) { if (t < passT) return 1; if (t < passT + 0.5) return [0, 1, 0][Math.min(2, step(t - passT, 6))]; return 0; }
 
-// C1: she runs away down a long alley; the lights die behind her, one by one
-const S4AS = { f: 260, vx: 240, vy: 118, camY: 11, slope: 0.07, floorW: 11, walls: alleyKit(401, { z0: 4, z1: 270, w: 11, litP: 0.08, spray: ['위험', '철거'] }) };
+// C1: reverse angle — she runs toward us; behind her each lamp dies where it is standing, a little closer each time
+const S4AS = { f: 250, vx: 240, vy: 112, camY: 9, slope: -0.06, floorW: 11, walls: alleyKit(401, { z0: 4, z1: 260, w: 11, litP: 0.08, spray: ['위험', '철거'], mats: ['cement', 'teal', 'block', 'brick', 'teal', 'cement'] }) };
 const S4AR = rayShot(S4AS);
-const S4A = { a: 33.5, z0: 26, v: 21, lamps: [{ x: -8, z: 34, h: 25 }, { x: 8, z: 62, h: 25 }, { x: -8, z: 92, h: 24 }, { x: 8, z: 124, h: 24 }, { x: -8, z: 160, h: 24 }] };
-const s4aZ = t => S4A.z0 + (t - S4A.a) * S4A.v;
-const s4aPass = l => S4A.a + (l.z + 8 - S4A.z0) / S4A.v;
+const S4A = { a: 33.5, z0: 84, v: 15,
+  marks: [[33.9, 70, ['stand', 'tilt']], [34.9, 52, ['tilt', 'stand']], [35.9, 37, ['raised', 'raised']], [36.9, 24, [{ ...GPOSE.stand, tilt: -40, la: [40, -30, 20], ra: [36, -26, 16] }, 'raised']], [37.55, 14, ['raised', 'raised']]] };
+const s4aZ = t => S4A.z0 - (t - S4A.a) * S4A.v;
+S4A.lamps = S4A.marks.map(([T, gap], i) => ({ x: i % 2 ? 7.5 : -7.5, z: s4aZ(T) + gap, h: 24, die: T + 0.45 })).concat([{ x: 7.5, z: 40, h: 24, die: 99 }, { x: -7.5, z: 70, h: 24, die: 99 }]);
 function shotChaseA(t, lt) {
   const ray = S4AR(), g = S4AS.slope, sk = S2Sky();
-  const lights = S4A.lamps.map(l => ({ x: l.x * 0.8, y: g * l.z + l.h - 1, z: l.z, r: 36, k: 3.0 * lampLife(s4aPass(l), t) }));
+  const lights = S4A.lamps.map(l => ({ x: l.x * 0.8, y: g * l.z + l.h - 1, z: l.z, r: 34, k: 3.0 * lampLife(l.die, t) }));
   ray.shade(fb, lights, -1.7, FOG_DUSK, (x, y) => sk.d[y * W + x]);
   S4A.lamps.forEach((l, i) => lampHead(fb, ray, l.x, g * l.z + l.h, l.z, lights[i].k > 0));
-  const poles = [[-10, g * 44 + 32, 44], [10, g * 100 + 32, 100], [-10, g * 150 + 30, 150]]; for (const p of poles) pole3(fb, ray, p[0], p[2], p[1] - g * p[2]); alleyWires(fb, ray, poles);
-  // the thing, in the dark she has left: held marks, wrong poses, too few frames
-  if (t >= 35.9 && t < 36.5) ghostAt(ray, -5, 30, 'hunch');
-  if (t >= 36.75 && t < 37.6) ghostAt(ray, 3, 34 + step(t - 36.75, 4) * 4, ['raised', 'raised', 'tilt', 'tilt'][Math.min(3, step(t - 36.75, 4))]);
-  girlRunAway(ray, lights, -1.7, 1, s4aZ(t), t);
-  // laundry strung across, whipping in the wind of her passing
-  for (const [lz, items] of [[48, [{ t: 0.2, k: 'shirt', c: G4, p: 0 }, { t: 0.5, k: 'towel', c: R3, p: 2 }, { t: 0.75, k: 'pants', c: T3, p: 1 }]], [86, [{ t: 0.3, k: 'shirt', c: WH, p: 3 }, { t: 0.62, k: 'towel', c: G3, p: 1 }]]]) {
+  for (const [lz, items] of [[52, [{ t: 0.2, k: 'shirt', c: G4, p: 0 }, { t: 0.5, k: 'towel', c: R3, p: 2 }, { t: 0.75, k: 'pants', c: T3, p: 1 }]], [96, [{ t: 0.3, k: 'shirt', c: WH, p: 3 }, { t: 0.62, k: 'towel', c: G3, p: 1 }]]]) {
     const [a0, b0] = ray.project(-10, g * lz + 24, lz), [a1, b1] = ray.project(10, g * lz + 25, lz), near = Math.abs(s4aZ(t) - lz) < 14;
     laundry(fb, a0, b0, a1, b1, 5, items.map(i => ({ ...i, c: DN[i.c], wind: near ? 2 : 1 })), step(t, near ? 12 : 4), 1, 6 * S4AS.f / lz / 10, K0);
   }
+  // it: held at each mark (under the lamp that is about to die), two poses at 4 fps, then gone into the dark
+  const gz = s4aZ(t);
+  for (const [T, gap, poses] of S4A.marks) if (t >= T && t < T + 0.55) ghostAt(ray, (Math.round(T) % 2 ? 4 : -4.5), s4aZ(T) + gap, poses[Math.min(1, step(t - T, 4) >> 1)], { t });
+  // she runs at us (front, face in shadow)
+  const ph = step(t, 12) % 8, [sx, sy] = ray.project(1, ray.ground(gz), gz), s = Math.round((16 * S4AS.f / gz) / 47 / 0.04) * 0.04, gb = new Buf(W, H);
+  girlFront(gb, ri(sx), ri(sy) - (ph % 4 === 2 ? Math.max(1, ri(s)) : 0), { s, lift: [RUNL[ph], RUNL[(ph + 4) % 8]], arm: RUNA[ph] });
+  volumize(gb); litSprite(fb, gb, ray.light(lights, -1.7, 1, ray.ground(gz) + 10, gz) - 0.3);
 }
 // C2: from above — the stepped alley, the basin, the dark following her
 const S4BS = { f: 250, vx: 240, vy: -30, camY: 66, slope: 0.12, floorW: 10, walls: alleyKit(402, { z0: 10, z1: 230, w: 10, litP: 0.1, spray: [], gapP: 0.22 }) };
 const S4BR = rayShot(S4BS);
-const S4B = { a: 38.0, z0: 46, v: 15, basin: { x: -6.5, z: 70 }, lamps: [{ x: 7, z: 56, h: 22 }, { x: -7, z: 84, h: 22 }, { x: 7, z: 112, h: 22 }] };
-const s4bZ = t => S4B.z0 + (t - S4B.a) * S4B.v, s4bPass = z => S4B.a + (z + 6 - S4B.z0) / S4B.v;
+const S4B = { marks: [[38.6, 44, 'lean'], [39.5, 33, 'reach'], [40.4, 24, 'reach'], [41.2, 16, 'lunge'], [41.95, 9, 'lunge']], a: 38.0, z0: 46, v: 15, basin: { x: -6.5, z: 70 }, lamps: [{ x: 7, z: 56, h: 22 }, { x: -7, z: 84, h: 22 }, { x: 7, z: 112, h: 22 }] };
+const s4bZ = t => S4B.z0 + (t - S4B.a) * S4B.v, s4bPass = z => { for (const [T, gap] of S4B.marks) if (s4bZ(T) - gap >= z - 8) return T + 0.4; return 99; }; // a lamp dies when it reaches it
+const s4bGirl = z => S4B.a + (z + 6 - S4B.z0) / S4B.v;
 function shotChaseB(t, lt) {
   const ray = S4BR(), g = S4BS.slope;
   const lights = S4B.lamps.map(l => ({ x: l.x * 0.8, y: g * l.z + l.h - 1, z: l.z, r: 32, k: 3.0 * lampLife(s4bPass(l.z), t) }));
   ray.shade(fb, lights, -1.6, { z0: 80, z1: 220, ramp: RM.dark, lvl: 1.5, max: 0.9 }, () => K0);
   S4B.lamps.forEach((l, i) => lampHead(fb, ray, l.x, g * l.z + l.h, l.z, lights[i].k > 0));
   // the red rubber basin: she clips it — it tips, rolls, the water spreads (keyed)
-  const bz = S4B.basin.z, bx = S4B.basin.x, hit = s4bPass(bz - 6), bf = t < hit ? -1 : step(t - hit, 12);
+  const bz = S4B.basin.z, bx = S4B.basin.x, hit = s4bGirl(bz - 6), bf = t < hit ? -1 : step(t - hit, 12);
   const [px, py] = ray.project(bx, g * bz, bz), u = 5.5 * S4BS.f / bz / 10;
   if (bf < 0) { ell(fb, ri(px), ri(py - 3 * u), ri(5 * u), ri(2.6 * u), R3); ell(fb, ri(px), ri(py - 3.2 * u), ri(4 * u), ri(1.8 * u), R1); ell(fb, ri(px), ri(py - 3.4 * u), ri(3.4 * u), ri(1.2 * u), T1); }
   else {
@@ -1794,14 +1810,13 @@ function shotChaseB(t, lt) {
     ell(fb, ri(px + dx), ri(py - 2.6 * u), ri(2.6 * u), ri(4 * u), R3); ell(fb, ri(px + dx + u), ri(py - 2.6 * u), ri(1.4 * u), ri(3 * u), R1);
     if (bf < 5) for (let i = 0; i < 10; i++) P(fb, px + (hash(i, bf, 7) - 0.3) * 14 * u, py - hash(i, bf, 8) * 8 * u, T5);
   }
-  if (t >= 40.4 && t < 41.0) ghostAt(ray, -12, 44, 'tilt');
-  if (t >= 41.4 && t < 42.6) { const k = step(t - 41.4, 4); ghostAt(ray, -3 + k * 0.6, 54 + k * 5, ['reach', 'reach', 'lean', 'reach', 'lunge'][Math.min(4, k)]); }
+  for (const [T, gap, pose] of S4B.marks) if (t >= T && t < T + 0.5) ghostAt(ray, -1.5 + (T % 1) * 3, s4bZ(T) - gap, pose, { t, flip: true });
   girlRunAway(ray, lights, -1.6, 1, s4bZ(t), t);
 }
 // C3: low, close behind her — it comes in from the dark at the edge of frame
-const S4CS = { f: 230, vx: 240, vy: 150, camY: 7, slope: 0.1, floorW: 10, walls: alleyKit(403, { z0: 3, z1: 130, w: 10, litP: 0.15, spray: ['철거'] }), end: { z: 128, x0: -10, x1: 5, h: 40, mat: 'teal', seed: 404, feat: [{ k: 'win', u0: -6, u1: 0, v0: 18, v1: 24, lit: 1 }] } };
+const S4CS = { f: 220, vx: 240, vy: 130, camY: 11, slope: 0.1, floorW: 10, walls: alleyKit(403, { z0: 3, z1: 130, w: 10, litP: 0.15, spray: ['철거'] }), end: { z: 128, x0: -10, x1: 5, h: 40, mat: 'teal', seed: 404, feat: [{ k: 'win', u0: -6, u1: 0, v0: 18, v1: 24, lit: 1 }] } };
 const S4CR = rayShot(S4CS);
-const S4C = { a: 42.6, z0: 22, v: 12, lamps: [{ x: 7, z: 30, h: 24 }, { x: -7, z: 64, h: 24 }, { x: 7, z: 100, h: 24 }] };
+const S4C = { a: 42.6, z0: 26, v: 6.5, lamps: [{ x: 7, z: 30, h: 24 }, { x: -7, z: 64, h: 24 }, { x: 7, z: 100, h: 24 }] };
 const s4cZ = t => S4C.z0 + (t - S4C.a) * S4C.v, s4cPass = z => S4C.a + (z + 6 - S4C.z0) / S4C.v;
 function shotChaseC(t, lt) {
   const ray = S4CR(), g = S4CS.slope, sk = S2Sky();
@@ -1810,8 +1825,7 @@ function shotChaseC(t, lt) {
   S4C.lamps.forEach((l, i) => lampHead(fb, ray, l.x, g * l.z + l.h, l.z, lights[i].k > 0));
   const poles = [[-9, g * 40 + 30, 40], [9, g * 90 + 30, 90]]; for (const p of poles) pole3(fb, ray, p[0], p[2], p[1] - g * p[2]); alleyWires(fb, ray, poles);
   girlRunAway(ray, lights, -1.8, 0.5, s4cZ(t), t);
-  if (t >= 44.6 && t < 45.3) ghostAt(ray, -6, 30, 'hunch');
-  if (t >= 46.0 && t < 46.7) ghostAt(ray, 4, 17, 'tilt', { flip: true });
+  for (const [T, x, z, pose] of [[43.7, -5, 21, 'hunch'], [44.7, 4.5, 31, 'hunch'], [45.6, -3.5, 40, 'hunch'], [46.4, 2.5, 47, 'lunge']]) if (t >= T && t < T + 0.5) ghostAt(ray, x, z, pose, { t, flip: x > 0 });
   if (t >= 47.2) lungeIn(step(t - 47.2, 5));
 }
 // it comes into frame from the left: the real figure, placed by where its head must land
@@ -1890,7 +1904,7 @@ function shotDeadEnd(t, lt) {
 }
 
 /* ---------- S6b: looking up — the face fills the red sky ---------- */
-const S6US = { f: 210, vx: 240, vy: 400, camY: 5, slope: 0.05, floorW: 10, walls: { [-1]: [{ z0: 2, z1: 80, w: 10, h: 60, mat: 'cement', seed: 611, feat: [{ k: 'win', u0: 10, u1: 16, v0: 24, v1: 30, bars: 1 }, { k: 'win', u0: 24, u1: 30, v0: 38, v1: 44, bars: 1 }] }], [1]: [{ z0: 2, z1: 80, w: 10, h: 54, mat: 'teal', seed: 612, feat: [{ k: 'win', u0: 12, u1: 18, v0: 26, v1: 32, bars: 1 }, { k: 'cable', u0: 2, u1: 80, v0: 20, v1: 21 }] }] } };
+const S6US = { f: 190, vx: 240, vy: 400, camY: 5, slope: 0.05, floorW: 10, walls: { [-1]: [{ z0: 2, z1: 80, w: 19, h: 40, mat: 'cement', seed: 611, feat: [{ k: 'win', u0: 10, u1: 16, v0: 24, v1: 30, bars: 1 }, { k: 'win', u0: 24, u1: 30, v0: 38, v1: 44, bars: 1 }] }], [1]: [{ z0: 2, z1: 80, w: 19, h: 36, mat: 'teal', seed: 612, feat: [{ k: 'win', u0: 12, u1: 18, v0: 26, v1: 32, bars: 1 }, { k: 'cable', u0: 2, u1: 80, v0: 20, v1: 21 }] }] } };
 const S6UR = rayShot(S6US);
 function shotFace(t, lt) {
   const ray = S6UR();
@@ -2201,12 +2215,12 @@ function buildSoundEvents() {
   // S4: running (12 fps, contact every 4th frame), breathing, flaps, the basin, lamps dying behind her, marks
   for (let f = 0; f < 15 * 12; f++) { const t = 33.5 + f / 12; if (f % 4 === 0) ev(t, 'step', { run: true }); if (f % 8 === 2) ev(t, 'breath', { in: f % 16 === 2, v: 1.2, d: 0.3 }); }
   const lampDeath = (t, pan) => { ev(t, 'click', { pan }); ev(t + 0.34, 'pop', { pan }); };
-  for (const l of S4A.lamps) { const t = s4aPass(l); if (t < 38) lampDeath(t, l.x > 0 ? 0.3 : -0.3); }
-  for (const lz of [48, 86]) { const t = S4A.a + (lz - S4A.z0) / S4A.v; if (t < 38) { ev(t - 0.1, 'flap', { pan: -0.2 }); ev(t + 0.12, 'flap', { pan: 0.2 }); } }
+  for (const l of S4A.lamps) if (l.die < 38) lampDeath(l.die, l.x > 0 ? 0.3 : -0.3);
+  for (const lz of [52, 96]) { const t = S4A.a + (S4A.z0 - lz) / S4A.v; if (t > 33.5 && t < 38) { ev(t - 0.1, 'flap', { pan: -0.2 }); ev(t + 0.12, 'flap', { pan: 0.2 }); } }
   for (const l of S4B.lamps) { const t = s4bPass(l.z); if (t < 42.6) lampDeath(t, l.x > 0 ? 0.4 : -0.4); }
-  ev(s4bPass(S4B.basin.z - 6), 'basin', { pan: -0.3 });
+  ev(s4bGirl(S4B.basin.z - 6), 'basin', { pan: -0.3 });
   for (const l of S4C.lamps) { const t = s4cPass(l.z); if (t < 48.5) lampDeath(t, l.x > 0 ? 0.4 : -0.4); }
-  for (const t of [35.9, 36.75, 40.4, 41.4, 44.6, 46.0]) ev(t, 'thud', { v: 0.5 });
+  for (const [T] of S4A.marks.concat(S4B.marks)) ev(T, 'thud', { v: 0.45 }); for (const T of [43.7, 44.7, 45.6, 46.4]) ev(T, 'thud', { v: 0.5 });
   ev(47.2, 'lunge');
   // S5: stairs (stone), heavy breath, the giant's stepped rise, wires snap
   for (let f = 0; f < 11 * 12; f++) { const t = 48.5 + f / 12; if (f % 4 === 0) ev(t, 'step', { run: true, stone: true, v: clamp(30 / (14 + (t - 48.5) * 6), 0.35, 1) }); if (f % 8 === 3) ev(t, 'breath', { in: f % 16 === 3, v: 1.4, d: 0.3 }); }
@@ -2228,7 +2242,7 @@ function layerGains(t) {
   if (t < 60.5) out.air = t < 24 ? 0.08 : t < 33.5 ? 0.04 : 0.07;
   if (t < 60.5) out.hum = t < 9 ? 0.02 : t < 24 ? 0.035 : t < 33.5 ? 0.07 : t < 48.5 ? 0.03 : 0.05;
   if (t >= 9 && t < 24) out.buzz = s2LampOn(t) ? 0.022 : 0;
-  if (t >= 33.5 && t < 48.5) { const on = t < 38 ? S4A.lamps.some(l => lampLife(s4aPass(l), t)) : t < 42.6 ? S4B.lamps.some(l => lampLife(s4bPass(l.z), t)) : S4C.lamps.some(l => lampLife(s4cPass(l.z), t)); out.buzz = on ? 0.012 : 0; }
+  if (t >= 33.5 && t < 48.5) { const on = t < 38 ? S4A.lamps.some(l => lampLife(l.die, t)) : t < 42.6 ? S4B.lamps.some(l => lampLife(s4bPass(l.z), t)) : S4C.lamps.some(l => lampLife(s4cPass(l.z), t)); out.buzz = on ? 0.012 : 0; }
   if (t >= 31.9 && t < 33.5) { out.hum = 0; out.air = 0; out.drone = 0; out.buzz = 0; }
   if (t >= 15.6 && t < 60.5 && !(t >= 31.9 && t < 33.5)) out.drone = t < 24 ? 0.06 : t < 33.5 ? 0.1 : t < 48.5 ? 0.08 : 0.08 + clamp((t - 50) / 9, 0, 1) * 0.16;
   if (t >= 70.12 && t < 74.6) { out.stat = t < 70.9 ? 0.09 : 0.022; out.whine = 0.006; }
