@@ -62,7 +62,7 @@ function shotShadow(t, lt) {
   // cast shadows: test each lit point against the girl's and the thing's silhouettes on their planes
   const gm = new PlaneMask(-8, 22, 16, 23, 10), hm = new PlaneMask(0, 44, 32, 46, 10);
   { const [px, py] = gm.px(0, 0); girlBack(gm.b, px, py, { s: 10 * 16 / 47, yaw: yaw * 0.6, spread }); }
-  { const [px, py] = hm.px(12, 0), base = { ...GPOSE.lean, lean: 24, la: [30, 10, 6], ra: [8, 6, 0] }, pose = t >= 31.4 ? { ...base, tilt: 70, head: [7, 12], la: [62, -30, 10] } : t >= 30.8 ? { ...base, tilt: 70, head: [7, 12] } : base; drawGhost(hm.b, px, py, 10 * 34 / 104, pose, { eyes: 0, flip: true }); }
+  { const [px, py] = hm.px(12, 0), base = { ...GPOSE.lean, lean: 36, head: [10, 12], la: [30, 10, 6], ra: [8, 6, 0] }, pose = t >= 31.4 ? { ...base, tilt: 70, head: [7, 12], la: [62, -30, 10] } : t >= 30.8 ? { ...base, tilt: 70, head: [7, 12] } : base; drawGhost(hm.b, px, py, 10 * 34 / 104, pose, { eyes: 0, flip: true }); }
   const L = S3_LAMP;
   for (let i = 0; i < W * H; i++) {
     const z = ray.z[i]; if (z > 1e8) continue;
@@ -77,51 +77,62 @@ function shotShadow(t, lt) {
   volumize(gb, 2); litSprite(fb, gb, ray.light([S3_LAMP], -1.4, 0, 10, 22) + 0.4);
 }
 
-/* ---------- the reveal: one hard cut, three keys, a face ---------- */
-function drawMonsterFace(b, key, t) {
-  b.d.fill(K0);
-  // the lamp behind it, stepped
-  const lx = 300, ly = 40;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const d = Math.hypot(x - lx, (y - ly) * 1.2), v = 3.2 - d / 70 + (bay(x, y) - 0.5) * 0.5; if (v > 0) b.d[y * W + x] = [K1, T0, T1, T2][Math.min(3, Math.floor(v))]; }
-  const S = [1.05, 1.9, 3.0][key], cx = [250, 236, 240][key], cy = [150, 132, 92][key], tilt = [64, 8, 0][key] * D2R;
-  const rot = (u, v) => [cx + (u * Math.cos(tilt) - v * Math.sin(tilt)) * S, cy + (u * Math.sin(tilt) + v * Math.cos(tilt)) * S];
-  // neck / shoulders (silhouette) for the wider keys
-  if (key < 2) { poly(b, [rot(-60, 160), rot(-40, 60), rot(-14, 36), rot(14, 36), rot(40, 60), rot(66, 170)], K0); }
-  // skull: long, narrow, uneven
-  const pts = []; for (let i = 0; i < 40; i++) { const a = i / 40 * Math.PI * 2, rr = 1 + (vnoise(i * 0.7, 3, 81) - 0.5) * 0.12; pts.push(rot(Math.cos(a) * 30 * rr * (Math.sin(a) > 0 ? 0.82 : 1), Math.sin(a) * 52 * rr + (Math.sin(a) > 0.6 ? 10 * (Math.sin(a) - 0.6) : 0))); }
-  poly(b, pts, K0);
-  // charred skin: cracks + a few teal specks, rim light where it faces the lamp
-  const minx = Math.max(0, ri(cx - 70 * S)), maxx = Math.min(W - 1, ri(cx + 70 * S)), miny = Math.max(0, ri(cy - 70 * S)), maxy = Math.min(H - 1, ri(cy + 80 * S));
-  const inside = (x, y) => b.d[y * W + x] === K0;
-  const sk = new Uint8Array(W * H); for (let y = miny; y <= maxy; y++) for (let x = minx; x <= maxx; x++) if (inside(x, y) && Math.hypot(x - cx, y - cy) < 75 * S) sk[y * W + x] = 1;
-  for (let y = miny; y <= maxy; y++) for (let x = minx; x <= maxx; x++) {
-    if (!sk[y * W + x]) continue;
-    const u = (x - cx) / S, v = (y - cy) / S;
-    if (Math.abs(vnoise(u * 0.22, v * 0.16, 82) - 0.5) < 0.02) b.d[y * W + x] = K1;
-    else if (hash(x, y, 83) < 0.012) b.d[y * W + x] = T0;
-    // rim toward the lamp (upper right): stepped
-    let e = 0; for (let k = 1; k <= 4; k++) { const qx = x + k, qy = y - k; if (qx >= W || qy < 0 || !sk[qy * W + qx]) { e = 5 - k; break; } }
-    if (e >= 3) b.d[y * W + x] = e === 4 ? T2 : T1; else if (e === 2 && bay(x, y) < 0.5) b.d[y * W + x] = T0;
+/* ---------- the reveal: one hard cut, three keys — the face opens ---------- */
+// sculpted head: height field (skull + brow + sockets + hollow cheeks) lit in stepped bands by a cold
+// lamp behind it and by the ember glow of its eyes and the split running down its face
+const SCULPT = new Map();
+function sculptFace(b, cx, cy, R, open, t) {
+  const key = [cx, cy, R, open].join(); let c = SCULPT.get(key);
+  if (!c) { c = new Buf(W, H); sculptRaw(c, cx, cy, R, open); SCULPT.set(key, c); }
+  blit(b, c, 0, 0);
+  const r = rng(3 + step(t, 6)); for (let k = 0; k < 40; k++) P(b, cx + (r() - 0.5) * 2.4 * R, cy - 1.2 * R + r() * 2.2 * R, r() < 0.6 ? K1 : T0); // ash
+}
+function sculptRaw(b, cx, cy, R, open) {
+  const Lx = 0.55, Ly = -0.55, Lz = 0.4, ln = Math.hypot(Lx, Ly, Lz);
+  const shape = (u, v) => { const w = 0.74 * (1 - 0.28 * Math.max(0, v) / 1.15); const q = (u / w) ** 2 + (v / 1.15) ** 2; if (q >= 1) return -1;
+    let z = Math.sqrt(1 - q);
+    z += 0.13 * Math.exp(-(((v + 0.34) / 0.07) ** 2)) * (Math.abs(u) < 0.56 ? 1 : 0);
+    z -= 0.34 * Math.exp(-((((Math.abs(u) - 0.27) / 0.13) ** 2) + (((v + 0.17) / 0.1) ** 2)));
+    z -= 0.14 * Math.exp(-((((Math.abs(u) - 0.42) / 0.12) ** 2) + (((v - 0.28) / 0.2) ** 2)));
+    z += 0.08 * Math.exp(-((((Math.abs(u) - 0.46) / 0.08) ** 2) + (((v - 0.02) / 0.08) ** 2)));
+    return z; };
+  const hw = v => { if (v < -0.95 || v > 1.08) return 0; const bell = Math.pow(Math.sin(Math.PI * (v + 0.95) / 2.03), 0.6); return open * 0.085 * bell * (1 + (vnoise(v * 14, 1, 5) - 0.5) * 0.6); };
+  const eyes = [[-0.27, -0.17], [0.27, -0.17]];
+  for (let y = Math.max(0, ri(cy - 1.4 * R)); y < Math.min(H, cy + 1.4 * R); y++) for (let x = Math.max(0, ri(cx - R)); x < Math.min(W, cx + R); x++) {
+    const u = (x - cx) / R, v = (y - cy) / R, z = shape(u, v); if (z < 0) continue;
+    const e = 1 / R, nxv = (shape(u - e, v) - shape(u + e, v)) * R / 2, nyv = (shape(u, v - e) - shape(u, v + e)) * R / 2, nl = Math.hypot(nxv, nyv, 1);
+    const lit = Math.max(0, (nxv * Lx + nyv * Ly + Lz) / nl / ln), bq = bay(x, y);
+    const w = hw(v), du = Math.abs(u);
+    if (w > 0 && du < w) { // inside the split: embers, deep, with strands across
+      const k = du / w, strand = Math.abs(((v * 9 + vnoise(u * 20, v * 4, 9) * 1.4) % 1) - 0.5) < 0.06 && k > 0.25;
+      const deep = vnoise(v * 6, 3, 11); b.d[y * W + x] = strand ? K0 : k > 0.8 ? R4 : k > 0.62 ? R2 : (k < 0.12 && deep > 0.55) ? R5 : (deep > 0.7 && k < 0.3) ? Y2 : k < 0.4 ? R1 : R0; continue;
+    }
+    let ember = 0; for (const [ex, ey] of eyes) { const d = Math.hypot(u - ex, (v - ey) * 1.2); ember += 0.9 / (1 + (d / 0.11) ** 2); }
+    if (w > 0) ember += 1.3 * Math.exp(-(((du - w) / 0.06) ** 2)) * (open > 0.2 ? 1 : 0.4); else if (Math.abs(u) < 0.012 && v > -0.9 && v < 1.0 && open === 0) ember += 2.2;
+    const cool = lit * 3.6 - 0.4 + (bq - 0.5) * 0.5, em = ember * 2.6 + (bq - 0.5) * 0.5;
+    let c = em > cool && em > 0.5 ? [R0, R1, R2, R4][clamp(Math.floor(em - 0.5), 0, 3)] : [K0, K1, T0, T1, T2][clamp(Math.floor(cool), 0, 4)];
+    if (Math.abs(vnoise(u * 9, v * 7, 82) - 0.5) < 0.018 && c !== K0) c = DN[c] === K0 ? K1 : DN[c]; // charred crazing
+    b.d[y * W + x] = c;
   }
-  // brow ridge + cheek hollows catch a little light
-  for (const sd of [-1, 1]) {
-    for (let a = -1; a <= 1; a += 0.05) { const [x, y] = rot(sd * 13 + a * 10, -20 + a * a * 4 - sd * a * 2); if (bay(ri(x), ri(y)) < 0.6) R(b, ri(x), ri(y), Math.max(1, ri(S)), 1, T0); }
-    for (let a = 0; a <= 1; a += 0.05) { const [x, y] = rot(sd * (18 - a * 4), 4 + a * 18); P(b, x, y, K1); }
-  }
-  // the mouth: a vertical tear that keeps opening, past where a jaw should stop
-  const jaw = [10, 22, 46][key] + (key === 2 ? Math.min(14, (t - S3_REVEAL - 0.26) * 30) : 0);
-  const mp = []; for (let i = 0; i <= 20; i++) { const a = i / 20 * Math.PI * 2; mp.push(rot(Math.cos(a) * (5 + jaw * 0.08) * (1 - 0.3 * Math.sin(a)), 30 + jaw * 0.5 + Math.sin(a) * jaw * 0.5)); }
-  poly(b, mp, K0); for (let i = 0; i < mp.length - 1; i++) if (mp[i][0] > cx) L(b, mp[i][0], mp[i][1], mp[i + 1][0], mp[i + 1][1], T0);
-  // eyes: hot cores in stepped rings, the glow scorching the skin around them in bands
-  for (const sd of [-1, 1]) {
-    const [ex, ey] = rot(sd * 12, -10), er = 6.5 * S;
-    for (let y = ri(ey - er * 2.6); y <= ey + er * 2.6; y++) for (let x = ri(ex - er * 2.6); x <= ex + er * 2.6; x++) {
-      if (x < 0 || y < 0 || x >= W || y >= H) continue;
-      const d = Math.hypot(x - ex, (y - ey) * 1.15) / er + (bay(x, y) - 0.5) * 0.18;
-      const c = d < 0.28 ? (key === 2 && Math.abs(x - ex) < Math.max(1, S * 0.6) ? K0 : Y3) : d < 0.55 ? Y2 : d < 0.82 ? R5 : d < 1.0 ? R4 : d < 1.4 ? (sk[y * W + x] ? R1 : -1) : d < 2.1 ? (sk[y * W + x] && bay(x, y) < 0.5 ? R0 : -1) : -1;
-      if (c >= 0) b.d[y * W + x] = c;
+  for (const [eu, ev] of eyes) { // the eyes: hot, stepped, pinpoint pupil
+    const ex = cx + eu * R, ey = cy + ev * R, er = 0.075 * R;
+    for (let y = ri(ey - er * 1.3); y <= ey + er * 1.3; y++) for (let x = ri(ex - er * 1.3); x <= ex + er * 1.3; x++) {
+      const d = Math.hypot(x - ex, (y - ey) * 1.25) / er + (bay(x, y) - 0.5) * 0.15; if (d > 1.25) continue;
+      P(b, x, y, d < 0.16 ? K0 : d < 0.42 ? Y3 : d < 0.68 ? Y2 : d < 0.95 ? R5 : R4);
     }
   }
+}
+function drawMonsterFace(b, key, t) {
+  b.d.fill(K0);
+  const lx = 330, ly = 30; // the lamp behind it, stepped
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const d = Math.hypot(x - lx, (y - ly) * 1.2), v = 3.2 - d / 70 + (bay(x, y) - 0.5) * 0.5; if (v > 0) b.d[y * W + x] = [K1, T0, T1, T2][Math.min(3, Math.floor(v))]; }
+  if (key === 0) { // it is standing right there, head lolled over
+    const g = new Buf(W, H), m = drawGhost(new Buf(W, H), 0, 0, 4.4, 'tilt', { t: 1 });
+    drawGhost(g, 236 - m.head[0], 116 - m.head[1], 4.4, 'tilt', { t: 1, gap: K0 }); rimLight(g, T2); blit(b, g, 0, 0); return;
+  }
+  if (key === 1) { sculptFace(b, 240, 132, 120, 0, t); return; }
+  const open = Math.min(1, step(t - S3_REVEAL - 0.26, 8) / 4 + 0.15);
+  sculptFace(b, 240, 112, 205, open, t);
 }
 function shotReveal(t, lt) {
   const key = lt < 0.14 ? 0 : lt < 0.26 ? 1 : 2;
@@ -205,25 +216,13 @@ function shotChaseC(t, lt) {
   if (t >= 46.0 && t < 46.7) ghostAt(ray, 4, 17, 'tilt', { flip: true });
   if (t >= 47.2) lungeIn(step(t - 47.2, 5));
 }
-// it comes into frame from the left: head first, then the arm, reaching for her (screen-space, two keys)
+// it comes into frame from the left: the real figure, placed by where its head must land
 function lungeIn(k) {
-  const key = Math.min(k, 3), hx = [-20, 70, 118, 128][key], hy = [150, 110, 86, 84][key], S = [1.6, 2.2, 2.8, 2.9][key];
-  const g = new Buf(W, H);
-  // shoulder mass and neck from off-frame left
-  poly(g, [[-40, H], [-40, hy + 40 * S], [hx - 30 * S, hy + 30 * S], [hx - 6 * S, hy + 12 * S], [hx + 4 * S, hy + 18 * S], [hx - 10 * S, hy + 60 * S], [20, H]], K0);
-  // head, tilted down toward her
-  const pts = []; for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2, c = Math.cos(0.5), sn = Math.sin(0.5), u = Math.cos(a) * 9 * S, v = Math.sin(a) * 14 * S; pts.push([hx + u * c - v * sn, hy + u * sn + v * c]); }
-  poly(g, pts, K0);
-  // the arm: shoulder → elbow → wrist → fingers, too long, bending the wrong way
-  if (key >= 1) {
-    const sx = hx - 18 * S, sy = hy + 34 * S, ex = sx + [0, 60, 120, 140][key], ey = sy - [0, 50, 70, 76][key], wx = ex + [0, 40, 80, 96][key], wy = ey + [0, 30, 54, 60][key];
-    L(g, sx, sy, ex, ey, K0, ri(2.4 * S)); L(g, ex, ey, wx, wy, K0, ri(1.8 * S));
-    for (let f = -1; f <= 1; f++) L(g, wx, wy, wx + 18 + f * 6, wy + 10 + f * 9, K0, 2);
-  }
-  rimLight(g, T2); blit(fb, g, 0, 0);
-  for (const sd of [-1, 1]) { const ex = hx + sd * 3.4 * S + 2 * S, ey = hy - 1 * S; ell(fb, ri(ex), ri(ey), ri(1.2 * S) + 1, ri(0.9 * S), R5); ell(fb, ri(ex), ri(ey), ri(0.7 * S), ri(0.5 * S), Y3); }
+  const key = Math.min(k, 3), hx = [-30, 70, 118, 126][key], hy = [140, 104, 84, 82][key], sc = [2.2, 2.6, 3.0, 3.1][key];
+  const pose = key === 0 ? 'lunge' : { ...GPOSE.lunge, la: [96 - key * 6, -18 + key * 4, 30], tilt: -36 };
+  const m = drawGhost(new Buf(W, H), 0, 0, sc, pose, { ash: false }), g = new Buf(W, H);
+  drawGhost(g, hx - m.head[0], hy - m.head[1], sc, pose, { t: key, gap: K0 }); rimLight(g, T2); blit(fb, g, 0, 0);
 }
-
 /* ---------- S5: the long stairs — the sky turns, it rises ---------- */
 const S5S = { f: 240, vx: 240, vy: 205, camY: 12, slope: 0.5, stepD: 3, floorW: 8, floorZ: 96,
   walls: alleyKit(501, { z0: 3, z1: 100, w: 8, litP: 0.16, spray: ['철거'], gapP: 0.1 }) };
@@ -239,7 +238,7 @@ function s5SkyAt(t, upShot) {
   if (t > S5_RISE_T) {
     const k = step(t - S5_RISE_T, 2.2), sc = upShot ? 3.6 : 2.1, cx = upShot ? 246 : 236, base = upShot ? 250 : 200;
     const hy = Math.max(upShot ? 18 : 10, base - k * (upShot ? 30 : 14)), g = new Buf(W, H);
-    drawGhost(g, cx, hy + 104 * sc, sc, upShot ? { ...GPOSE.stand, tilt: 18 + (k % 3) * 22, la: [18, 6, 4], ra: [-18, -6, -4] } : (k > 9 ? 'reach' : 'lean'), { eyes: 2, rim: K1, flip: !upShot });
+    drawGhost(g, cx, hy + 104 * sc, sc, upShot ? { ...GPOSE.stand, tilt: 18 + (k % 3) * 22, la: [18, 6, 4], ra: [-18, -6, -4] } : (k > 9 ? 'reach' : 'lean'), { eyes: 2, rim: K1, flip: !upShot, gap: K0, t: step(t, 4) });
     rimLight(g, R2); smoke(g, 0, 0, W, H, 9, step(t, 6)); blit(S5Sky, g, 0, 0);
   }
   return p;

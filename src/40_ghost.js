@@ -1,87 +1,110 @@
 /* ==========================================================================
-   GHOST — one silhouette: tiny head, sloped narrow shoulders, stilt legs,
-   arms that reach past the knees. Built from keyed joints at any scale.
-   Body colours are K0/K1 only; the eyes are the only emissive part.
+   THE CHARRED ONE — the figure. One silhouette at every scale:
+   shoulders shrugged to the ears, a long neck hanging the head forward,
+   a ribbed starved torso, arms to the ankles with long jointed fingers,
+   stilt legs on tiptoe, soot-black, ash lifting off its edges.
+   Faceless until it opens: two ember eyes, deep set.
+   unit = 1px at scale 1 → standing height ≈ 110
    ========================================================================== */
-// unit = 1px at scale 1 → standing height ≈ 104
+// la/ra: [shoulder, elbow, wrist] (deg, + = toward facing), ll/rl: [hip, knee]
+// head: [neck forward, neck drop] in units, tilt: head roll (deg), lean: torso from vertical
 const GPOSE = {
-  stand:   { lean: 0,   head: [0, 0],     tilt: 0,   la: [4, 4, 6],      ra: [-4, -6, -4],   ll: [3, 0],    rl: [-3, 0],    crouch: 0 },
-  tilt:    { lean: -2,  head: [5, 2],     tilt: 70,  la: [6, 2, 12],     ra: [-2, -4, 0],    ll: [4, 0],    rl: [-2, 0],    crouch: 0 },
-  reach:   { lean: 22,  head: [6, 6],     tilt: -15, la: [70, 10, 10],   ra: [52, 20, 6],    ll: [12, 6],   rl: [-14, 14],  crouch: 4 },
-  raised:  { lean: -4,  head: [0, 0],     tilt: 25,  la: [160, 20, -12], ra: [-170, -30, 20], ll: [6, 0],   rl: [-6, 0],    crouch: 0 },
-  hunch:   { lean: 48,  head: [10, 14],   tilt: 100, la: [8, 0, 0],      ra: [-6, 10, 0],    ll: [30, 70],  rl: [-30, 70],  crouch: 18 },
-  lunge:   { lean: 34,  head: [10, 8],    tilt: -30, la: [96, 6, 10],    ra: [84, -6, 14],   ll: [40, 30],  rl: [-36, 4],   crouch: 10 },
-  behind:  { lean: 4,   head: [2, 4],     tilt: 12,  la: [20, -8, 0],    ra: [-20, 8, 0],  ll: [5, 0],    rl: [-5, 0],    crouch: 0 },
-  lean:    { lean: 18,  head: [5, 10],    tilt: 30,  la: [26, 8, 4],     ra: [-10, -6, 2],   ll: [5, 0],    rl: [-5, 0],    crouch: 2 }
+  stand:  { front: 1, lean: 0, head: [1, 7],  tilt: 14,  la: [12, -8, 14],   ra: [9, -4, 10],    ll: [5, 3],   rl: [4, 3] },
+  behind: { front: 1, lean: 0, head: [1, 8],  tilt: 20,  la: [20, -10, 12],  ra: [16, -6, 8],    ll: [5, 3],   rl: [5, 3] },
+  tilt:   { front: 1, lean: 0, head: [3, 8],  tilt: 84,  la: [8, -2, 24],    ra: [14, -10, 6],   ll: [5, 3],   rl: [4, 3] },
+  lean:   { lean: 18, head: [9, 8],   tilt: 26,  la: [24, 10, 12],   ra: [-6, 8, 6],     ll: [5, 4],   rl: [-5, 4] },
+  reach:  { lean: 28, head: [10, 4],  tilt: -12, la: [74, 8, 18],    ra: [56, 22, 12],   ll: [14, 12], rl: [-14, 6] },
+  raised: { front: 1, lean: 0, head: [1, 7], tilt: 40, la: [150, 40, 30], ra: [140, 50, 20], ll: [6, 3],  rl: [6, 3] },
+  hunch:  { lean: 62, head: [11, 10], tilt: 96,  la: [12, 0, 30],    ra: [-4, 12, 20],   ll: [36, 104], rl: [-30, 98] },
+  lunge:  { lean: 44, head: [12, 2],  tilt: -26, la: [102, -8, 24],  ra: [84, 14, 10],   ll: [42, 34], rl: [-40, 6] }
 };
-// draw ghost with feet centre at (x,y); s scale; pose name or object; ef = eye brightness 0..2; flip faces left
+// tapered limb segment with rounded joint
+function limbT(b, x0, y0, x1, y1, w0, w1, c) {
+  const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l;
+  poly(b, [[x0 + nx * w0, y0 + ny * w0], [x1 + nx * w1, y1 + ny * w1], [x1 - nx * w1, y1 - ny * w1], [x0 - nx * w0, y0 - ny * w0]], c);
+  if (w0 >= 1) ell(b, ri(x0), ri(y0), ri(w0), ri(w0), c);
+  P(b, x1, y1, c);
+}
 function drawGhost(b, x, y, s, pose, o = {}) {
   const p = typeof pose === 'string' ? GPOSE[pose] : pose, f = o.flip ? -1 : 1, ef = o.eyes === undefined ? 2 : o.eyes;
-  const th = Math.max(2, ri(2.6 * s)), thA = Math.max(2, ri(1.9 * s)), dark = o.c || K0, rim = o.rim === undefined ? K1 : o.rim;
-  const X = u => x + u * s * f, Y = u => y + u * s;
-  const A = (ang, len) => [Math.sin(ang * D2R) * len * f, Math.cos(ang * D2R) * len];
-  const legs = [p.ll, p.rl].map(([a, k]) => {
-    const kk = a >= 0 ? k : -k, kn = [Math.sin(a * D2R) * 27, Math.cos(a * D2R) * 27];
-    return [kn, [kn[0] + Math.sin((a - kk) * D2R) * 27, kn[1] + Math.cos((a - kk) * D2R) * 27]];
+  const c = o.c || K0, rib = o.rim === undefined ? K1 : o.rim;
+  const dir = (a, l) => [Math.sin(a * D2R) * l * f * s, Math.cos(a * D2R) * l * s];
+  const fr = p.front ? 1 : 0;
+  const legs = [p.ll || [3, 4], p.rl || [-3, 4]].map(([a0, k], li) => { const a = fr ? a0 * (li ? -1 : 1) : a0;
+    const kk = a >= 0 ? k : -k, kn = [Math.sin(a * D2R) * 28, Math.cos(a * D2R) * 28], sa = a - kk;
+    const an = [kn[0] + Math.sin(sa * D2R) * 28, kn[1] + Math.cos(sa * D2R) * 28];
+    return [kn, an, [an[0] + Math.sin((sa + 8) * D2R) * 7, an[1] + Math.cos((sa + 8) * D2R) * 7]]; // tiptoe foot continues the shin
   });
-  const drop = Math.max(legs[0][1][1], legs[1][1][1]);
-  const hipU = [0, -drop];
-  const lean = p.lean, shU = [hipU[0] + Math.sin(lean * D2R) * 36, hipU[1] - Math.cos(lean * D2R) * 36];
-  const hx = X(hipU[0]), hy = Y(hipU[1]), sx = X(shU[0]), sy = Y(shU[1]);
-  for (const [kn, ft] of legs) {
-    const kx = X(kn[0]), ky = Y(hipU[1] + kn[1]), fx = X(ft[0]), fy = Y(hipU[1] + ft[1]);
-    L(b, hx, hy, kx, ky, dark, th); L(b, kx, ky, fx, fy, dark, th);
-    L(b, fx, fy, fx + 3 * s * f, fy, dark, Math.max(1, th - 1));
+  const drop = Math.max(legs[0][2][1], legs[1][2][1]);
+  const hx = x, hy = y - drop * s;
+  const L0 = p.lean * D2R, sx = hx + Math.sin(L0) * 34 * s * f, sy = hy - Math.cos(L0) * 34 * s;
+  const ax = Math.cos(L0) * f, ay = Math.sin(L0);
+  const th = v => Math.max(1, v * s);
+  const arm = (A, side) => {
+    const m = fr ? side : 1, ua = A[0] * m, fa = A[1] * m, wa = A[2] * m;
+    const _u = 0, shx = sx + ax * 4.6 * s * side, shy = sy + ay * 4.6 * s * side - 1.2 * s;
+    const [ex, ey] = dir(ua, 27), [wx, wy] = dir(ua + fa, 27), E = [shx + ex, shy + ey], Wr = [E[0] + wx, E[1] + wy];
+    limbT(b, shx, shy, E[0], E[1], th(1.7), th(1.1), c); limbT(b, E[0], E[1], Wr[0], Wr[1], th(1.2), th(0.8), c);
+    const [px, py] = dir(ua + fa + wa, 4), P0 = [Wr[0] + px, Wr[1] + py], fs = fr ? side : 1; limbT(b, Wr[0], Wr[1], P0[0], P0[1], th(1.0), th(1.1), c);
+    for (let k = 0; k < 4; k++) {
+      const a1 = ua + fa + wa + (k - 1.5) * 9, [k1x, k1y] = dir(a1, 5.5), Kp = [P0[0] + k1x, P0[1] + k1y], [k2x, k2y] = dir(a1 + 22 + k * 4, 5);
+      limbT(b, P0[0], P0[1], Kp[0], Kp[1], th(0.45), th(0.35), c); limbT(b, Kp[0], Kp[1], Kp[0] + k2x, Kp[1] + k2y, th(0.35), th(0.15), c);
+    }
+    return Wr;
+  };
+  const leg = ([kn, an, toe], side) => {
+    const ox = side * 1.8 * s * f;
+    const K = [hx + ox + kn[0] * s * f, hy + kn[1] * s], A = [hx + ox + an[0] * s * f, hy + an[1] * s], T2 = [hx + ox + toe[0] * s * f, hy + toe[1] * s];
+    limbT(b, hx + ox, hy, K[0], K[1], th(2.2), th(1.3), c); limbT(b, K[0], K[1], A[0], A[1], th(1.4), th(0.9), c); limbT(b, A[0], A[1], T2[0], T2[1], th(0.9), th(0.35), c);
+  };
+  arm(p.ra || [-3, 4, 8], -1); leg(legs[1], -1);
+  // torso: shrugged trapezius → ribcage → wasp waist → narrow hips
+  const prof = [[0, 0.7], [0.08, 1.05], [0.3, 0.95], [0.5, 0.7], [0.64, 0.3], [0.8, 0.32], [1, 0.6]], Lp = [], Rp = [];
+  for (const [t, wk] of prof) { const px = lerp(sx, hx, t), py = lerp(sy, hy, t), w = 5.6 * s * wk; Lp.push([px + ax * w, py + ay * w]); Rp.push([px - ax * w, py - ay * w]); }
+  poly(b, Lp.concat(Rp.reverse()), c);
+  // the shrug: two humps of shoulder rise above where the neck leaves the body
+  for (const side of [-1, 1]) { // rounded, hunched-up shoulders (not points)
+    const bx = sx + ax * 4.4 * s * side, by = sy + ay * 4.4 * s * side;
+    poly(b, [[sx + ax * 6.4 * s * side, by + 2 * s], [bx + ax * 1.8 * s * side, by - 3 * s], [sx + ax * 1.6 * s * side, sy - 1 * s], [sx, sy + 3 * s]], c);
+    ell(b, ri(bx - ax * 0.6 * s * side - Math.sin(L0) * 1.5 * s * f), ri(by - 2.0 * s), Math.max(1, ri(2.8 * s)), Math.max(1, ri(2.2 * s)), c);
   }
-  // torso: narrow, ribbed slightly, sloped shoulders
-  const nx = -Math.cos(lean * D2R) * f, ny = -Math.sin(lean * D2R);
-  const w1 = 4.4 * s, w2 = 2.6 * s;
-  { const prof = [[0, 0.62], [0.18, 1.0], [0.42, 0.86], [0.66, 0.5], [0.85, 0.56], [1, 0.62]], L1 = [], R1 = [];
-    for (const [tt, wk] of prof) { const px = lerp(sx, hx, tt), py = lerp(sy, hy, tt), ww = w1 * wk; L1.push([px + nx * ww, py + ny * ww]); R1.push([px - nx * ww, py - ny * ww]); }
-    poly(b, L1.concat(R1.reverse()), dark); }
-  if (s >= 1.2) for (let i = 1; i < 5; i++) { const t = i / 5.5, px = lerp(sx, hx, t), py = lerp(sy, hy, t); L(b, px - nx * w2 * 0.8, py - ny * w2 * 0.8, px + nx * w2 * 0.2, py + ny * w2 * 0.2, rim); }
-  // arms: upper 26, fore 26, hand+fingers 9 → reach past the knees
-  for (const [side, arm] of [[1, p.la], [-1, p.ra]]) {
-    const [ua, fa, ha] = arm;
-    const ax = sx + nx * w1 * side * 0.9, ay = sy + ny * w1 * side * 0.9 + 1.5 * s;
-    const [ex, ey] = A(ua, 26 * s), [wx, wy] = A(ua + fa, 26 * s);
-    const e = [ax + ex, ay + ey], wr = [e[0] + wx, e[1] + wy];
-    L(b, ax, ay, e[0], e[1], dark, thA); L(b, e[0], e[1], wr[0], wr[1], dark, thA);
-    for (let k = -1; k <= 1; k++) { const [qx, qy] = A(ua + fa + ha + k * 9, 9 * s); L(b, wr[0], wr[1], wr[0] + qx, wr[1] + qy, dark, Math.max(1, thA - 1)); }
-  }
-  // neck + head (small, long skull, wrong tilt)
-  const hdx = sx + (p.head[0] * s) * f, hdy = sy - 6 * s + p.head[1] * s;
-  L(b, sx, sy, hdx, hdy + 2 * s, dark, Math.max(1, ri(s * 1.2)));
-  const tr = p.tilt * D2R * f, hr = [3.4 * s, 5.4 * s];
-  const pts = []; for (let i = 0; i < 14; i++) { const t = i / 14 * Math.PI * 2, ex = Math.cos(t) * hr[0], ey = Math.sin(t) * hr[1] * (Math.sin(t) < 0 ? 1.1 : 0.9); pts.push([hdx + ex * Math.cos(tr) - ey * Math.sin(tr), hdy - 2 * s + ex * Math.sin(tr) + ey * Math.cos(tr)]); }
-  poly(b, pts, dark);
-  // eyes: two hot points with a stepped ring (no blur)
+  if (s >= 1.1) for (let k = 1; k <= 4; k++) { const t = 0.12 + k * 0.1, px = lerp(sx, hx, t), py = lerp(sy, hy, t), w = 4.2 * s * (1 - k * 0.08); L(b, px - ax * w, py - ay * w + s, px + ax * w * 0.2, py + ay * w * 0.2, rib); }
+  leg(legs[0], 1);
+  const hd = p.head || [6, 2], nx = sx + hd[0] * s * f + Math.sin(L0) * 6 * s * f, ny = sy - 9 * s + hd[1] * s;
+  limbT(b, sx, sy - 1 * s, nx, ny + 3 * s, th(1.3), th(1.1), c);
+  const tr = (p.tilt || 0) * D2R * f, pts = [];
+  for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2, u = Math.cos(a) * 3.0 * s, v = Math.sin(a) * 6.0 * s * (Math.sin(a) < 0 ? 1.15 : 0.78); pts.push([nx + u * Math.cos(tr) - v * Math.sin(tr), ny - 3 * s + u * Math.sin(tr) + v * Math.cos(tr)]); }
+  if (s >= 1.5) { const g = pts.map(([px, py]) => [nx + (px - nx) * 1.18, ny - 3 * s + (py - ny + 3 * s) * 1.12]); poly(b, g, o.gap !== undefined ? o.gap : T); }
+  poly(b, pts, c);
+  const nearW = arm(p.la || [5, -6, 14], 1);
   if (ef > 0) {
-    const eo = [[-1.3, -2.6], [1.3, -2.6]].map(([u, v]) => [hdx + (u * Math.cos(tr) - v * Math.sin(tr)) * s, hdy - 2 * s + (u * Math.sin(tr) + v * Math.cos(tr)) * s]);
-    const er = ri(s * 0.45);
+    const eo = (fr ? [[-1.15, -4.2], [1.15, -4.2]] : [[0.6, -4.6], [2.6, -4.2]]).map(([u, v]) => [nx + (u * f * Math.cos(tr) - v * Math.sin(tr)) * s, ny - 3 * s + (u * f * Math.sin(tr) + v * Math.cos(tr)) * s]);
     for (const [ex, ey] of eo) {
-      if (er < 1) { P(b, ex, ey, ef > 1 ? Y3 : R5); if (ef > 1) P(b, ex + (ex > hdx ? 1 : -1), ey, R5); }
-      else { if (ef > 1) ell(b, ri(ex), ri(ey), er + 1, er, R5); ell(b, ri(ex), ri(ey), er, Math.max(0, er - 1), ef > 1 ? Y3 : R5); }
+      if (s < 1.4) { P(b, ex, ey, ef > 1 ? Y3 : R5); if (ef > 1 && s >= 0.8) P(b, ex + f, ey, R5); }
+      else { const r = Math.max(1, ri(s * 0.55)); ell(b, ri(ex), ri(ey), r + 1, r, R4); ell(b, ri(ex), ri(ey), r, Math.max(0, r - 1), ef > 1 ? R5 : R4); P(b, ex, ey, ef > 1 ? Y3 : R5); if (r > 1) P(b, ex + 1, ey, Y2); }
     }
   }
-  return { head: [hdx, hdy], sh: [sx, sy] };
+  if (s >= 0.9 && o.ash !== false) {
+    const r = rng(1 + (o.t || 0) * 7);
+    for (let k = 0; k < 6 + s * 5; k++) { const ax2 = nx + (r() - 0.5) * 16 * s, ay2 = ny - 8 * s - r() * 22 * s; P(b, ax2, ay2, r() < 0.5 ? K1 : T0); if (r() < 0.3) P(b, ax2, ay2 - 1, K1); }
+  }
+  return { head: [nx, ny - 3 * s], sh: [sx, sy], hand: nearW };
 }
-// ragged smoky edge — dithered K0 noise around an existing silhouette region (for the giant)
 function smoke(b, x0, y0, w, h, seed, t) {
   for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
-    const k = y * b.w + x; if (x < 0 || y < 0 || x >= b.w || y >= b.h) continue;
-    const c = b.d[k]; if (c === K0 || c === K1) continue;
+    if (x < 0 || y < 0 || x >= b.w || y >= b.h) continue;
+    const k = y * b.w + x, c = b.d[k]; if (c === K0 || c === K1) continue;
     const n = (x > 0 && b.d[k - 1] === K0) + (x < b.w - 1 && b.d[k + 1] === K0) + (y > 0 && b.d[k - b.w] === K0) + (y < b.h - 1 && b.d[k + b.w] === K0);
     if (n && hash(x, y + t, seed) < 0.18 * n) b.d[k] = K1;
   }
 }
-
-// cold rim on the upper-left edges only: separates the silhouette from dark walls without lighting it
+// cold rim on the upper-left edges, two stepped layers
 function rimLight(b, c) {
-  const add = [];
+  const add = [], add2 = [];
   for (let y = 1; y < b.h; y++) for (let x = 1; x < b.w; x++) {
     const k = y * b.w + x; if (b.d[k] === T || EMISSIVE[b.d[k]]) continue;
     if (b.d[k - 1] === T || b.d[k - b.w] === T) add.push(k);
+    else if (x > 1 && y > 1 && (b.d[k - 2] === T || b.d[k - 2 * b.w] === T) && bay(x, y) < 0.5) add2.push(k);
   }
-  for (const k of add) b.d[k] = c;
+  for (const k of add) b.d[k] = c; for (const k of add2) if (b.d[k] === K0) b.d[k] = DN[c] === K0 ? K1 : DN[c];
 }

@@ -78,7 +78,7 @@
   window.__render = t => { renderAt(t); present(); return true; };
   window.__shots = SHOTS.map(s => [s.a, s.z, s.name]);
   // build every pre-rendered layer before the Start button appears (no hitches mid-film)
-  const warm = SHOTS.map(s => s.a + 0.5).concat([63.1, 63.4, 63.7, 64.3, 64.6]); let wi = 0;
+  const warm = SHOTS.map(s => s.a + 0.5).concat([63.1, 63.4, 63.7, 64.3, 64.6, 32.0, 32.2, 32.32, 32.45, 32.57, 32.7, 32.9]); let wi = 0;
   const q = new URLSearchParams(location.search), still = q.has('t') ? parseFloat(q.get('t')) : null;
   (function step2() {
     if (wi < warm.length) { renderAt(warm[wi++]); return setTimeout(step2, 0); }
