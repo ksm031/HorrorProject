@@ -131,7 +131,7 @@ function buildSoundEvents() {
   for (const l of S4B.lamps) { const t = s4bPass(l.z); if (t < 42.6) lampDeath(t, l.x > 0 ? 0.4 : -0.4); }
   ev(s4bGirl(S4B.basin.z - 6), 'basin', { pan: -0.3 });
   for (const l of S4C.lamps) { const t = s4cPass(l.z); if (t < 48.5) lampDeath(t, l.x > 0 ? 0.4 : -0.4); }
-  for (const [T] of S4A.marks.concat(S4B.marks)) ev(T, 'thud', { v: 0.45 }); for (const T of [43.7, 44.7, 45.6, 46.4]) ev(T, 'thud', { v: 0.5 });
+  for (let t = 33.5; t < 47.2; t += 0.5) if (t < 38 || (t >= 38 && t < 42.6) || t >= 43.2) ev(t, 'thud', { v: 0.18 + clamp((t - 33.5) / 14, 0, 1) * 0.3 }); // its footfalls: heavy, every other beat, closing in
   ev(47.2, 'lunge');
   // S5: stairs (stone), heavy breath, the giant's stepped rise, wires snap
   for (let f = 0; f < 11 * 12; f++) { const t = 48.5 + f / 12; if (f % 4 === 0) ev(t, 'step', { run: true, stone: true, v: clamp(30 / (14 + (t - 48.5) * 6), 0.35, 1) }); if (f % 8 === 3) ev(t, 'breath', { in: f % 16 === 3, v: 1.4, d: 0.3 }); }

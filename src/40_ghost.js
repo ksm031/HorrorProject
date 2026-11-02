@@ -31,13 +31,14 @@ function drawGhost(b, x, y, s, pose, o = {}) {
   const dir = (a, l) => [Math.sin(a * D2R) * l * f * s, Math.cos(a * D2R) * l * s];
   const fr = p.front ? 1 : 0;
   const legs = [p.ll || [3, 4], p.rl || [-3, 4]].map(([a0, k], li) => { const a = fr ? a0 * (li ? -1 : 1) : a0;
-    const kk = a >= 0 ? k : -k, kn = [Math.sin(a * D2R) * 28, Math.cos(a * D2R) * 28], sa = a - kk;
-    const an = [kn[0] + Math.sin(sa * D2R) * 28, kn[1] + Math.cos(sa * D2R) * 28];
+    const lf = p.lift ? p.lift[li] : 0, t1 = 28 * (1 - 0.08 * lf), t2 = 28 * (1 - 0.5 * lf); // a lifted leg seen end-on: foreshortened, not bent sideways
+    const kk = a >= 0 ? k : -k, kn = [Math.sin(a * D2R) * t1, Math.cos(a * D2R) * t1], sa = a - kk;
+    const an = [kn[0] + Math.sin(sa * D2R) * t2, kn[1] + Math.cos(sa * D2R) * t2];
     return [kn, an, [an[0] + Math.sin((sa + 8) * D2R) * 7, an[1] + Math.cos((sa + 8) * D2R) * 7]]; // tiptoe foot continues the shin
   });
   const drop = Math.max(legs[0][2][1], legs[1][2][1]);
   const hx = x, hy = y - drop * s;
-  const L0 = p.lean * D2R, sx = hx + Math.sin(L0) * 34 * s * f, sy = hy - Math.cos(L0) * 34 * s;
+  const tk = p.tk || 1, L0 = p.lean * D2R, sx = hx + Math.sin(L0) * 34 * tk * s * f, sy = hy - Math.cos(L0) * 34 * tk * s;
   const ax = Math.cos(L0) * f, ay = Math.sin(L0);
   const th = v => Math.max(v >= 2 ? 1.5 : v >= 1.2 ? 1.15 : 0.85, v * s); // limbs never thinner than ~2px: it must read from far away
   const arm = (A, side) => {
@@ -87,9 +88,13 @@ function drawGhost(b, x, y, s, pose, o = {}) {
       else { const r = Math.max(1, ri(s * 0.55)); ell(b, ri(ex), ri(ey), r + 1, r, R4); ell(b, ri(ex), ri(ey), r, Math.max(0, r - 1), ef > 1 ? R5 : R4); P(b, ex, ey, ef > 1 ? Y3 : R5); if (r > 1) P(b, ex + 1, ey, Y2); }
     }
   }
-  if (s >= 0.9 && o.ash !== false) {
-    const r = rng(1 + (o.t || 0) * 7);
-    for (let k = 0; k < 6 + s * 5; k++) { const ax2 = nx + (r() - 0.5) * 16 * s, ay2 = ny - 8 * s - r() * 22 * s; P(b, ax2, ay2, r() < 0.5 ? K1 : T0); if (r() < 0.3) P(b, ax2, ay2 - 1, K1); }
+  if (s >= 0.9 && o.ash !== false) { // ash lifting off it: each flake keeps its own path and rises steadily
+    const tt = o.time || 0;
+    for (let k = 0; k < 6 + s * 4; k++) {
+      const life = 2.2 + hash(k, 1, 7) * 1.6, ph = ((tt / life) + hash(k, 2, 7)) % 1, sway = Math.sin((tt + k) * 1.7) * 2 * s;
+      const fx = nx + (hash(k, 3, 7) - 0.5) * 12 * s + sway, fy = ny - 4 * s - ph * 26 * s;
+      if (ph < 0.85) P(b, ri(fx), ri(fy), ph < 0.4 ? K1 : T0);
+    }
   }
   return { head: [nx, ny - 3 * s], sh: [sx, sy], hand: nearW, eyes: eyesOut };
 }
@@ -110,4 +115,24 @@ function rimLight(b, c) {
     else if (x > 1 && y > 1 && (b.d[k - 2] === T || b.d[k - 2 * b.w] === T) && bay(x, y) < 0.5) add2.push(k);
   }
   for (const k of add) b.d[k] = c; for (const k of add2) if (b.d[k] === K0) b.d[k] = DN[c] === K0 ? K1 : DN[c];
+}
+
+/* ---- gaits: one continuous cycle each, keyed at 6 fps ----
+   walk: upright stalk seen front/back — hips rock, head stays put and tilted, arms swing late like pendulums
+   crawl: low on all fours seen from behind — limbs splayed, alternate pairs reaching */
+const GAIT_N = 6;
+function ghostGait(kind, f, reach = 0) {
+  const ph = ((f % GAIT_N) + GAIT_N) % GAIT_N, a = ph / GAIT_N * Math.PI * 2;
+  const sw = Math.sin(a), swLag = Math.sin(a - 0.9), lift = k => Math.max(0, Math.sin(a + k)) ;
+  if (kind === 'walk') return {
+    front: 1, lean: sw * 3, head: [1 - sw * 0.6, 8], tilt: 22 - sw * 4, sx: sw * 1.4,
+    la: [9 + swLag * 6 + reach * 30, -4 - reach * 20, 12], ra: [9 - swLag * 6, -4, 12],
+    ll: [5, 3], rl: [5, 3], lift: [lift(0), lift(Math.PI)]
+  };
+  if (kind === 'crawl') return { // on all fours, from behind: torso foreshortened toward the ground, hands planted ahead
+    front: 1, tk: 0.5, lean: sw * 3, head: [1, 13], tilt: 36 + sw * 6, sx: sw * 1.2,
+    la: [26 + lift(0) * 10 + reach * 30, 22 - lift(0) * 24, 28], ra: [26 + lift(Math.PI) * 10, 22 - lift(Math.PI) * 24, 28],
+    ll: [40, 44], rl: [40, 44], lift: [lift(Math.PI) * 0.7, lift(0) * 0.7]
+  };
+  return GPOSE.stand;
 }
