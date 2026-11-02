@@ -51,7 +51,7 @@ const S3SC = {
 S3SC.end.tex = (r, u, v, g, side, kind, ray) => wallTex(r, u, v, g, -1, kind, ray);
 const S3R = rayShot(S3SC);
 const S3_TURN = [[27.6, 0.18], [28.5, 0.36], [29.4, 0.6], [30.3, 0.86]];
-const S3_LAMP = { x: -24, y: 6, z: -60, r: 150, k: 3.4 }; // a lamp further down the slope, low behind her
+const S3_LAMP = { x: -24, y: 6, z: -60, r: 150, k: 3.4, air: 0 }; // a lamp further down the slope, low behind her
 const S3_REVEAL = 31.9;
 function shotShadow(t, lt) {
   const ray = S3R(), k = step(lt, ANIM);
@@ -283,7 +283,7 @@ S6S.end.tex = (r, u, v, g, side, kind, ray) => { wallTex(r, u, v, g, -1, kind, r
 const S6R = rayShot(S6S);
 function shotDeadEnd(t, lt) {
   const ray = S6R(); sky(S5Sky, 0, 0, W, [[R0, 30], [R1, 30], [R2, 40], [R3, 200]]); strata(S5Sky, 0, 10, W, R1, 91, 8, R2);
-  ray.shade(fb, [{ x: 0, y: 40, z: 40, r: 60, k: 1.2 }], -1.8, { z0: 30, z1: 90, ramp: RM.red, lvl: 1.6, max: 0.5 }, (x, y) => S5Sky.d[y * W + x]);
+  ray.shade(fb, [{ x: 0, y: 40, z: 40, r: 60, k: 1.2, air: 0 }], -1.8, { z0: 30, z1: 90, ramp: RM.red, lvl: 1.6, max: 0.5 }, (x, y) => S5Sky.d[y * W + x]);
   const [bx0, by] = ray.project(-12, ray.ground(60) + 44, 60), [bx1] = ray.project(12, 0, 60); for (let x = ri(bx0); x < bx1; x += 3) { ellO(fb, x, ri(by) - 3, 2, 2, K0); }
   wire(fb, -10, 30, 490, 20, 30, K0); wire(fb, -10, 50, 490, 44, 22, K0);
   const stopT = 60.5, z = t < stopT ? 22 + (t - 59.5) * 22 : 44;
@@ -335,7 +335,7 @@ function shotRoom(t, lt) {
   const open = t >= 67.3 && t < slam ? [2, 2, 1, 1][Math.min(3, Math.max(0, k))] : 0;
   const on = t >= 70.0, img = t >= 70.9, beat = t >= 74.2;
   const lights = [];
-  if (on) lights.push({ x: -13.5, y: 9, z: 25, r: beat ? 46 : 40, k: beat ? 3.6 : img ? 3.1 : 2.6 });
+  if (on) lights.push({ x: -13.5, y: 9, z: 25, r: beat ? 46 : 40, k: beat ? 3.6 : img ? 3.1 : 2.6, cone: false, air: 0.7, ar: 9 });
   ray.shade(fb, lights, -2.4, null, () => K0);
   // the doorway: closed seams leak red; open shows the red alley and a swinging leaf
   const [dx0, dy0] = ray.project(S7_DOOR.x0, S7_DOOR.h, 50), [dx1, dy1] = ray.project(S7_DOOR.x1, 0, 50);

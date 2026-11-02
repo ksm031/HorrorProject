@@ -21,6 +21,7 @@ const RAMPS = [
   /*12 sky  */[K0, K1, T0, T1, T2, T3, T4, T5],
   /*13 rust */[K0, K1, R0, Y0, Y1, R2]
 ];
+let TEX_CS = 0.5; // world size of a ~2.4px texture cell at the current hit distance (texture LOD)
 const RM = { cement: 0, teal: 1, moss: 2, brick: 3, red: 4, green: 5, glass: 6, paper: 7, blue: 8, wood: 9, ground: 10, dark: 11, sky: 12, rust: 13 };
 
 class Ray {
@@ -28,7 +29,7 @@ class Ray {
     this.sc = sc; const n = W * H;
     this.m = new Uint8Array(n); this.s = new Float32Array(n); this.z = new Float32Array(n);
     this.px = new Float32Array(n); this.py = new Float32Array(n); this.nr = new Uint8Array(n); this.em = new Uint8Array(n).fill(T);
-    this.sky = new Uint8Array(n);
+    this.sky = new Uint8Array(n); this.wet = new Uint8Array(n);
     this.cast();
   }
   ground(z) { const s = this.sc; return s.slope * z + (s.groundFn ? s.groundFn(z) : 0); }
@@ -48,6 +49,7 @@ class Ray {
           const g = list[k], z = g.w / (dx * sd); if (z < g.z0 || z >= g.z1 || z >= hz) continue;
           const y = cy + dy * z, base = g.base !== undefined ? g.base : this.ground(z), top = g.top !== undefined ? g.top : this.ground(g.z0) + g.h;
           if (y < base - 0.5 || y > top) continue;
+          if (g.cut && g.cut(z, y - base)) continue;
           hz = z; kind = 1; seg = g; side = sd; U = z; V = y - base;
         }
         // roofs (seen from above): flat plane at the wall top, reaching back from the facade
@@ -56,6 +58,7 @@ class Ray {
           const top = g.top !== undefined ? g.top : this.ground(g.z0) + g.h, z = (top - cy) / dy;
           if (z <= 0.3 || z >= hz || z < g.z0 || z >= g.z1) continue;
           const X = dx * z * sd; if (X < g.w || X > g.w + (g.rd || 34)) continue;
+          if (g.cut) continue;
           hz = z; kind = 5; seg = g; side = sd; U = z; V = X - g.w;
         }
         // returns: faces toward the camera where a wall steps in or out
@@ -73,38 +76,67 @@ class Ray {
         if (X > e.x0 && X < e.x1 && y >= base && y < base + e.h) { hz = z; kind = 3; seg = e; U = X; V = y - base; side = 0; }
       }
       if (kind < 0) { this.sky[i] = 1; this.z[i] = 1e9; continue; }
-      res.m = 0; res.s = 4; res.e = T;
-      const X = dx * hz, Y = cy + dy * hz;
+      res.m = 0; res.s = 4; res.e = T; res.wet = 0;
+      const X = dx * hz, Y = cy + dy * hz; TEX_CS = Math.pow(2, Math.round(Math.log2(Math.max(0.06, 2.4 * hz / sc.f))));
       if (kind === 0) (sc.floorTex || floorTex)(res, X, hz, this, sc);
       else if (kind === 4) (sc.ceilTex || ceilTex)(res, X, hz, this, sc);
       else if (kind === 5) roofTex(res, U, V, seg);
       else (seg.tex || wallTex)(res, U, V, seg, side, kind, this);
       this.m[i] = res.m; this.s[i] = res.s; this.em[i] = res.e; this.z[i] = hz; this.px[i] = X; this.py[i] = Y;
+      this.wet[i] = res.wet ? 1 : 0;
       this.nr[i] = kind === 0 || kind === 5 ? 0 : kind === 4 ? 4 : kind === 1 ? (side < 0 ? 1 : 2) : 3;
     }
   }
   // per-frame: lights [{x,y,z,r,k}], fog {z0,z1,ramp,lvl}, amb
   shade(out, lights, amb, fog, skyFn) {
-    const NX = [0, 1, -1, 0, 0], NY = [1, 0, 0, 0, -1], NZ = [0, 0, 0, -1, 0];
+    const NX = [0, 1, -1, 0, 0], NY = [1, 0, 0, 0, -1], NZ = [0, 0, 0, -1, 0], sc = this.sc, cy = sc.camY;
+    const airL = lights.filter(L => L.k && L.air !== 0);
     for (let i = 0; i < W * H; i++) {
       const x = i % W, y = (i / W) | 0, bq = bay(x, y);
-      if (this.sky[i]) { out.d[i] = skyFn(x, y); continue; }
-      if (this.em[i] !== T) { out.d[i] = this.em[i]; continue; }
-      const z = this.z[i], X = this.px[i], Y = this.py[i], n = this.nr[i];
-      let v = this.s[i] + amb;
-      for (let k = 0; k < lights.length; k++) {
-        const L = lights[k]; if (!L.k) continue;
-        const lx = L.x - X, ly = L.y - Y, lz = L.z - z, d = Math.sqrt(lx * lx + ly * ly + lz * lz); if (d > L.r) continue;
-        const ndl = Math.max(0, (NX[n] * lx + NY[n] * ly + NZ[n] * lz) / d);
-        const a = 1 - d / L.r; v += L.k * a * a * (0.25 + 0.75 * ndl);
+      // light in the air: closest approach of the view ray to each lamp, limited by what the ray hits
+      let air = 0;
+      if (airL.length) {
+        const dx = (x - sc.vx) / sc.f, dy = (sc.vy - y) / sc.f, dn = 1 / Math.sqrt(dx * dx + dy * dy + 1), Dx = dx * dn, Dy = dy * dn, Dz = dn;
+        const tmax = this.sky[i] ? 1e9 : this.z[i] / Dz;
+        for (const L of airL) {
+          const lx = L.x, ly = L.y - cy, lz = L.z; let tc = lx * Dx + ly * Dy + lz * Dz; if (tc < 0) continue; if (tc > tmax) tc = tmax;
+          const qx = Dx * tc - lx, qy = Dy * tc - ly, qz = Dz * tc - lz, d = Math.sqrt(qx * qx + qy * qy + qz * qz), ar = L.ar || 11;
+          if (d > ar * 2.4) continue;
+          let a = 0;
+          if (d < ar * 0.22) a = 1.6; else if (d < ar * 0.45) a = 1.0; else if (d < ar * 0.8) a = 0.5; // stepped halo round the bulb
+          if (L.cone !== false && qy < 0) { const hr = Math.sqrt(qx * qx + qz * qz), cw = 0.9 - qy * 0.3; if (hr < cw) a = Math.max(a, Math.min(1, (1 - hr / cw) * 1.5) * Math.max(0, 1 + qy / (ar * 3))); }
+          else a = Math.max(a, Math.max(0, 1 - d / ar) ** 2);
+          air += a * (L.air !== undefined ? L.air : L.k * 0.7);
+        }
       }
-      let ramp = RAMPS[this.m[i]];
-      if (fog) {
-        const fz = clamp((z - fog.z0) / (fog.z1 - fog.z0), 0, 1) * (fog.max || 1);
-        if (fz > 0) { v = lerp(v, fog.lvl, fz * 0.8); if (bq < fz * 0.9 - 0.15) ramp = RAMPS[fog.ramp]; }
+      let c;
+      if (this.sky[i]) c = skyFn(x, y);
+      else if (this.em[i] !== T) c = this.em[i];
+      else {
+        const z = this.z[i], X = this.px[i], Y = this.py[i], n = this.nr[i];
+        let v = this.s[i] + amb;
+        for (let k = 0; k < lights.length; k++) {
+          const L = lights[k]; if (!L.k) continue;
+          const lx = L.x - X, ly = L.y - Y, lz = L.z - z, d = Math.sqrt(lx * lx + ly * ly + lz * lz); if (d > L.r * (this.wet[i] ? 2.2 : 1)) continue;
+          if (this.wet[i]) { // wet ground mirrors the lamp: specular on the reflected view ray
+            const vx2 = X, vy2 = -(Y - cy), vz2 = z, vl = Math.sqrt(vx2 * vx2 + vy2 * vy2 + vz2 * vz2), sp = (vx2 * lx + vy2 * ly + vz2 * lz) / (vl * d);
+            if (sp > 0.97) v += L.k * 1.6 * (sp - 0.97) / 0.03;
+            if (d > L.r) continue;
+          }
+          const ndl = Math.max(0, (NX[n] * lx + NY[n] * ly + NZ[n] * lz) / d);
+          const a = 1 - d / L.r; v += L.k * a * a * (0.25 + 0.75 * ndl);
+        }
+        let ramp = RAMPS[this.m[i]];
+        if (fog) {
+          const fz = clamp((z - fog.z0) / (fog.z1 - fog.z0), 0, 1) * (fog.max || 1);
+          if (fz > 0) { v = lerp(v, fog.lvl, fz * 0.8); if (bq < fz * 0.9 - 0.15) ramp = RAMPS[fog.ramp]; }
+        }
+        const q = Math.floor(v + 0.5 + (bq - 0.5) * 0.45);
+        c = ramp[q < 0 ? 0 : q >= ramp.length ? ramp.length - 1 : q];
       }
-      const q = Math.floor(v + 0.5 + (bq - 0.5) * 0.45);
-      out.d[i] = ramp[q < 0 ? 0 : q >= ramp.length ? ramp.length - 1 : q];
+      const st = Math.floor(air + (bq - 0.5) * 0.6); // stepped, dithered only at the seams
+      for (let k = 0; k < Math.min(3, st); k++) c = UP[c];
+      out.d[i] = c;
     }
   }
   project(x, y, z) { const sc = this.sc; return [sc.vx + x / z * sc.f, sc.vy - (y - sc.camY) / z * sc.f]; }
@@ -123,16 +155,27 @@ function wallTex(r, u, v, g, side, kind, ray) {
   const seed = g.seed || 1, top = (g.top !== undefined ? g.top : ray.ground(g.z0) + g.h) - (g.base !== undefined ? g.base : ray.ground(kind === 2 ? g.z0 : u));
   const mat = g.mat || 'cement';
   let m = RM[mat === 'block' ? 'cement' : mat], s = g.lvl || 4.4;
-  s += (fbm(u * 0.07, v * 0.09, seed) - 0.5) * (g.blot !== undefined ? g.blot : 1.9); // large blotches
-  if (mat === 'teal' && !g.noPeel) { const p = fbm(u * 0.16 + 9, v * 0.2, seed + 4); if (p > 0.66) { m = RM.cement; s = 4.2 + (p - 0.66) * 3; } }
+  s += (fbm(u * 0.05, v * 0.07, seed) - 0.5) * (g.blot !== undefined ? g.blot : 0.9); // broad tone variation (kept low)
+  if (mat === 'cement' && v % 3.6 < 0.14) s -= 0.7;                                     // formwork pour lines
+  if (mat === 'teal' && !g.noPeel) {
+    const p = fbm(u * 0.16 + 9, v * 0.2, seed + 4); if (p > 0.66) { m = RM.cement; s = 4.2 + (p - 0.66) * 3; if (p < 0.68) s -= 1.4; } // peeled to cement, dark lip
+    else if (vnoise(u * 1.6, v * 1.6, seed + 5) > 0.82) { m = RM.cement; s = 4.6; }                                                  // flaking chips
+  }
   if (mat === 'block') { const row = Math.floor(v / 2), bu = u + (row & 1) * 2; if (v % 2 < 0.22 || bu % 4 < 0.18) s -= 1.4; else s += (hash(Math.floor(bu / 4), row, seed) - 0.5) * 0.7; }
   if (mat === 'brick') { const row = Math.floor(v / 0.75), bu = u + (row & 1) * 1.1; if (v % 0.75 < 0.16 || bu % 2.2 < 0.16) { m = RM.cement; s = 2.4; } else s = 3.3 + (hash(Math.floor(bu / 2.2), row, seed) - 0.5) * 1.6 + (fbm(u * 0.1, v * 0.1, seed) - 0.5); }
-  s -= streakAt(u, v, top, seed) * 1.3;
+  s -= streakAt(u, v, top, seed) * 1.5;
+  { const c = Math.floor(u * 3.1); if (hash(c, 3, seed) < 0.08) { const l = 3 + hash(c, 4, seed) * 10, st = 4 + hash(c, 5, seed) * 14; if (v < st && v > st - l) s -= 0.8; } } // thin rust/water runs
   if (v < 5) s -= (5 - v) / 5 * 1.3;                          // grime / AO at the foot
   if (top - v < 1.0) s += 1.2; else if (top - v < 1.6) s -= 1.2; // coping + its shadow
   if (crackAt(u, v, seed)) s -= 2.2;
-  // moss creeping up from the gutter
+  // mildew and moss creeping up from the gutter
   const mh = fbm(u * 0.25, 3, seed + 2) * 5 - 1.8 + (hash(ri(u * 2), 0, seed) - 0.5) * 0.8; if (v < mh && mat !== 'brick') { m = RM.moss; s = 2.4 + (mh - v) * 0.3 + (hash(ri(u * 3), ri(v * 3), seed) - 0.5); }
+  else if (v < 7 && vnoise(u * 0.9, v * 0.9, seed + 6) > 0.66) s -= 1.0;
+  // red ivy (담쟁이) climbing the wall in clusters of leaves
+  if (g.ivy) {
+    const reach = fbm(u * 0.09, v * 0.05, seed + 20) + (1 - v / Math.max(8, top)) * 0.35 - 0.2;
+    if (reach > 0.5 && v > 0.5) { const cell = hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed + 21); if (cell > 0.22) { m = RM.red; s = 1.4 + cell * 2.2 + (reach - 0.5) * 2 + (v / top) * 0.8; } else if (cell > 0.12) { m = RM.dark; s = 1.2; } }
+  }
   r.m = m; r.s = s;
   const fl = kind === 2 ? g.rfeat : g.feat;
   if (fl) for (const ft of fl) if (u >= ft.u0 && u < ft.u1 && v >= ft.v0 && v < ft.v1) FEAT[ft.k](r, u - ft.u0, v - ft.v0, ft, kind === 2 ? -side : side || -1);
@@ -189,6 +232,9 @@ function floorTex(r, X, z, ray, sc) {
   if (Math.abs(X) > w - 1.6) { r.s -= 1.2 + (Math.abs(X) - (w - 1.6)) * 0.5; if (Math.abs(X) > w - 1.2 && (z * 2) % 1 < 0.3) r.s -= 1; } // gutter
   if (crackAt(X * 0.9, z * 0.7, seed) && hash(ri(X), ri(z), 3) < 0.6) r.s -= 1.2;
   const pd = fbm(X * 0.12 + 40, z * 0.08, seed + 5); if (pd > 0.66 && Math.abs(X) < w - 2) { r.m = RM.glass; r.s = pd > 0.675 ? 2.4 : 3.6; r.wet = 1; } // puddles (bright lip)
+  if (!sc.noFlowers && Math.abs(X) > w - 2.6 && Math.abs(X) < w - 0.3 && fbm(z * 0.12, X > 0 ? 1 : 2, seed + 9) > 0.6) {
+    const h = hash(Math.floor(X / TEX_CS), Math.floor(z / (TEX_CS * 2)), seed); if (h < 0.3) { r.m = RM.red; r.s = 2.2 + h * 7; } else if (h < 0.55) { r.m = RM.moss; r.s = 2.6; }
+  }
   if (sc.stepD) { const ph = (z % sc.stepD) / sc.stepD; if (ph < 0.12) r.s += 1.6; else if (ph < 0.3) r.s -= 1.2; }
 }
 function roofTex(r, u, v, g) {

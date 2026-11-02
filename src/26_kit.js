@@ -35,10 +35,20 @@ function alleyKit(seed, o = {}) {
         }
         if (r() < 0.5) seg.feat.push({ k: 'cable', u0: z, u1: z1, v0: 21 + r() * 3, v1: 22.2 + r() * 3 });
       }
+      if (r() < (o.ivyP !== undefined ? o.ivyP : 0.28)) seg.ivy = 1;
+      if (kind === 'wall' && r() < (o.treeP !== undefined ? o.treeP : 0.35)) out[sd].push(canopy(z, z1, w + 3, seg, sg));
       out[sd].push(seg); prevW = w; z = z1; n++;
     }
   }
   return out;
+}
+// a crimson tree leaning over a wall: a ragged leaf plane above the coping
+function canopy(z0, z1, w, under, seed) {
+  const base = under.h - 2, h = 16 + hash(seed, 1, 3) * 12, zc = (z0 + z1) / 2, half = (z1 - z0) / 2 + 3;
+  return { z0: z0 - 3, z1: z1 + 3, w, h: base + h, rd: 0, noRoof: 1, seed: seed + 50, ivy: 0, mat: 'red', canopy: 1,
+    baseH: base, ch: h,
+    cut(u, v) { const du = Math.abs(u - zc) / half, vv = (v - base) / h; if (vv < 0 || vv > 1) return true; const edge = 1 - du * du - (vv - 0.45) ** 2 * 1.6; return edge + (fbm(u * 0.35, v * 0.35, seed) - 0.5) * 0.9 < 0.05 || hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed) < 0.1; },
+    tex(r, u, v) { const vv = (v - base) / h, cl = hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed + 3); r.m = RM.red; r.s = 1.2 + vv * 2.4 + cl * 1.6 + (fbm(u * 0.3, v * 0.3, seed + 4) - 0.5) * 1.4; if (cl < 0.14) { r.m = RM.dark; r.s = 1; } } };
 }
 // lamp head (projected), poles+wires zig-zagging along an alley
 function lampHead(b, ray, x, y, z, on) {

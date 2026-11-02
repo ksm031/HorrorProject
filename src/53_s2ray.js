@@ -91,7 +91,7 @@ function s2Girl(t, on) {
 // the convex mirror: reverse view, fisheye, flipped
 function s2Mirror(t, on, cx, cy, Rm) {
   const rr = S2RRay(), rs = S2RSky(), dark = !on;
-  rr.shade(S2RBuf, [{ x: -2, y: 26, z: 9, r: 50, k: on ? 3.6 : 0 }], -2.2, { z0: 40, z1: 200, ramp: RM.dark, lvl: 2, max: 0.9 }, (x, y) => rs.d[y * W + x]);
+  rr.shade(S2RBuf, [{ x: -2, y: 26, z: 9, r: 50, k: on ? 3.6 : 0, air: 0.9 }], -2.2, { z0: 40, z1: 200, ramp: RM.dark, lvl: 2, max: 0.9 }, (x, y) => rs.d[y * W + x]);
   if (on) { const [lx, ly] = rr.project(-2, 28, 9); R(S2RBuf, ri(lx) - 8, ri(ly) - 2, 16, 3, K1); R(S2RBuf, ri(lx) - 6, ri(ly) + 1, 12, 2, Y3); }
   const g = s2Ghost(t), black = S2_BLACK.some(([a, z]) => t >= a && t < z);
   const next = S2_GHOST.find(e => e[0] > t && e[0] - t < 0.15);
