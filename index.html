@@ -614,6 +614,205 @@ function meter(b, x, y) { R(b, x, y, 5, 6, G3); R(b, x + 1, y + 1, 3, 2, K1); P(
 function pipe(b, x, y0, y1) { R(b, x, y0, 2, y1 - y0, G1); for (let y = y0 + 4; y < y1; y += 12) R(b, x - 1, y, 4, 1, G0); }
 function acUnit(b, x, y) { R(b, x, y, 14, 10, G3); R(b, x, y, 14, 1, G4); ellO(b, x + 5, y + 5, 3, 3, G1); R(b, x + 10, y + 2, 3, 6, G2); R(b, x + 1, y + 10, 2, 2, G1); R(b, x + 11, y + 10, 2, 2, G1); }
 
+/* ---- 25_ray.js ---- */
+/* ==========================================================================
+   RAY — one-point-perspective scenes computed per pixel.
+   Geometry pass (cached): material ramp + base shade + world position + normal.
+   Shade pass (per frame): world-space lights, fog, AO → quantised to ramp steps
+   with dithering only at band seams. Textures live in world units, so bricks,
+   windows and spray paint foreshorten correctly.
+   ========================================================================== */
+const RAMPS = [
+  /*0 cement*/[K0, K1, T0, T1, G1, G2, G3, G4, G5],
+  /*1 teal  */[K0, K1, T0, T1, T2, T3, T4, T5, T6],
+  /*2 moss  */[K0, K1, M0, M1, M2, M3, M4],
+  /*3 brick */[K0, K1, R0, Y0, R1, R2, Y1],
+  /*4 red   */[K0, R0, R1, R2, R3, R4],
+  /*5 green */[K0, K1, M0, M1, M2, M3, M4],
+  /*6 glass */[K0, K1, T0, T1, T2, T3],
+  /*7 paper */[K1, T0, G1, G2, G3, G4, G5, WH],
+  /*8 blue  */[K0, K1, T0, B0, B1, T5],
+  /*9 wood  */[K0, K1, R0, Y0, Y1],
+  /*10 ground*/[K0, K1, T0, G0, G1, G2, G3, G4],
+  /*11 dark */[K0, K0, K1, T0, T1],
+  /*12 sky  */[K0, K1, T0, T1, T2, T3, T4, T5],
+  /*13 rust */[K0, K1, R0, Y0, Y1, R2]
+];
+const RM = { cement: 0, teal: 1, moss: 2, brick: 3, red: 4, green: 5, glass: 6, paper: 7, blue: 8, wood: 9, ground: 10, dark: 11, sky: 12, rust: 13 };
+
+class Ray {
+  constructor(sc) {
+    this.sc = sc; const n = W * H;
+    this.m = new Uint8Array(n); this.s = new Float32Array(n); this.z = new Float32Array(n);
+    this.px = new Float32Array(n); this.py = new Float32Array(n); this.nr = new Uint8Array(n); this.em = new Uint8Array(n).fill(T);
+    this.sky = new Uint8Array(n);
+    this.cast();
+  }
+  ground(z) { const s = this.sc; return s.slope * z + (s.groundFn ? s.groundFn(z) : 0); }
+  cast() {
+    const sc = this.sc, f = sc.f, vx = sc.vx, vy = sc.vy, cy = sc.camY;
+    const res = { m: 0, s: 0, e: T };
+    for (let sy = 0; sy < H; sy++) for (let sx = 0; sx < W; sx++) {
+      const i = sy * W + sx, dx = (sx - vx) / f, dy = (vy - sy) / f;
+      let hz = 1e9, kind = -1, seg = null, side = 0, U = 0, V = 0;
+      // floor (sloped plane)
+      const den = sc.slope - dy; if (den > 1e-5) { const z = cy / den; if (z > 0.3 && z < hz) { hz = z; kind = 0; } }
+      // side walls (several layers, each with its own depth range and height)
+      for (const sd of [-1, 1]) {
+        if (dx * sd <= 0) continue; const list = sc.walls[sd];
+        for (let k = 0; k < list.length; k++) {
+          const g = list[k], z = g.w / (dx * sd); if (z < g.z0 || z >= g.z1 || z >= hz) continue;
+          const y = cy + dy * z, base = g.base !== undefined ? g.base : this.ground(z), top = g.top !== undefined ? g.top : this.ground(g.z0) + g.h;
+          if (y < base - 0.5 || y > top) continue;
+          hz = z; kind = 1; seg = g; side = sd; U = z; V = y - base;
+        }
+        // returns: faces toward the camera where a wall steps in or out
+        for (let k = 0; k < list.length; k++) {
+          const g = list[k]; if (!g.ret) continue; const z = g.z0; if (z >= hz || z < 0.3) continue;
+          const X = dx * z * sd; if (X < g.w || X > g.ret) continue;
+          const y = cy + dy * z, base = this.ground(z), top = g.top !== undefined ? g.top : this.ground(g.z0) + g.h;
+          if (y < base || y > top) continue;
+          hz = z; kind = 2; seg = g; side = sd; U = X; V = y - base;
+        }
+      }
+      // end wall (a house front or a dead end facing the camera)
+      if (sc.end && sc.end.z < hz) {
+        const e = sc.end, z = e.z, X = dx * z, y = cy + dy * z, base = this.ground(z);
+        if (X > e.x0 && X < e.x1 && y >= base && y < base + e.h) { hz = z; kind = 3; seg = e; U = X; V = y - base; side = 0; }
+      }
+      if (kind < 0) { this.sky[i] = 1; this.z[i] = 1e9; continue; }
+      res.m = 0; res.s = 4; res.e = T;
+      const X = dx * hz, Y = cy + dy * hz;
+      if (kind === 0) (sc.floorTex || floorTex)(res, X, hz, this, sc);
+      else (seg.tex || wallTex)(res, U, V, seg, side, kind, this);
+      this.m[i] = res.m; this.s[i] = res.s; this.em[i] = res.e; this.z[i] = hz; this.px[i] = X; this.py[i] = Y;
+      this.nr[i] = kind === 0 ? 0 : kind === 1 ? (side < 0 ? 1 : 2) : 3;
+    }
+  }
+  // per-frame: lights [{x,y,z,r,k}], fog {z0,z1,ramp,lvl}, amb
+  shade(out, lights, amb, fog, skyFn) {
+    const NX = [0, 1, -1, 0], NY = [1, 0, 0, 0], NZ = [0, 0, 0, -1];
+    for (let i = 0; i < W * H; i++) {
+      const x = i % W, y = (i / W) | 0, bq = bay(x, y);
+      if (this.sky[i]) { out.d[i] = skyFn(x, y); continue; }
+      if (this.em[i] !== T) { out.d[i] = this.em[i]; continue; }
+      const z = this.z[i], X = this.px[i], Y = this.py[i], n = this.nr[i];
+      let v = this.s[i] + amb;
+      for (let k = 0; k < lights.length; k++) {
+        const L = lights[k]; if (!L.k) continue;
+        const lx = L.x - X, ly = L.y - Y, lz = L.z - z, d = Math.sqrt(lx * lx + ly * ly + lz * lz); if (d > L.r) continue;
+        const ndl = Math.max(0, (NX[n] * lx + NY[n] * ly + NZ[n] * lz) / d);
+        const a = 1 - d / L.r; v += L.k * a * a * (0.25 + 0.75 * ndl);
+      }
+      let ramp = RAMPS[this.m[i]];
+      if (fog) {
+        const fz = clamp((z - fog.z0) / (fog.z1 - fog.z0), 0, 1) * (fog.max || 1);
+        if (fz > 0) { v = lerp(v, fog.lvl, fz * 0.8); if (bq < fz * 0.9 - 0.15) ramp = RAMPS[fog.ramp]; }
+      }
+      const q = Math.floor(v + 0.5 + (bq - 0.5) * 0.45);
+      out.d[i] = ramp[q < 0 ? 0 : q >= ramp.length ? ramp.length - 1 : q];
+    }
+  }
+  project(x, y, z) { const sc = this.sc; return [sc.vx + x / z * sc.f, sc.vy - (y - sc.camY) / z * sc.f]; }
+  light(lights, amb, X, Y, z, n = 3) { // light level at a point (for sprites)
+    let v = amb; for (const L of lights) { if (!L.k) continue; const d = Math.hypot(L.x - X, L.y - Y, L.z - z); if (d < L.r) { const a = 1 - d / L.r; v += L.k * a * a * 0.8; } } return v;
+  }
+}
+
+/* ---- textures (world units: 1 = 10 cm) ---- */
+function streakAt(u, v, top, seed) { // rain streaks hanging from a wall top
+  const c = Math.floor(u * 1.6), h = hash(c, 7, seed); if (h > 0.3) return 0;
+  const len = 6 + hash(c, 9, seed) * 22, d = top - v; return d > 0 && d < len ? (1 - d / len) * (0.6 + h) : 0;
+}
+function crackAt(u, v, seed) { const n = vnoise(u * 0.35, v * 0.22, seed); return Math.abs(n - 0.5) < 0.012 && vnoise(u * 0.1, v * 0.1, seed + 1) > 0.55; }
+function wallTex(r, u, v, g, side, kind, ray) {
+  const seed = g.seed || 1, top = (g.top !== undefined ? g.top : ray.ground(g.z0) + g.h) - (g.base !== undefined ? g.base : ray.ground(kind === 2 ? g.z0 : u));
+  const mat = g.mat || 'cement';
+  let m = RM[mat === 'block' ? 'cement' : mat], s = g.lvl || 4.4;
+  s += (fbm(u * 0.07, v * 0.09, seed) - 0.5) * 1.9;            // large blotches
+  if (mat === 'teal') { const p = fbm(u * 0.16 + 9, v * 0.2, seed + 4); if (p > 0.66) { m = RM.cement; s = 4.2 + (p - 0.66) * 3; } }
+  if (mat === 'block') { const row = Math.floor(v / 2), bu = u + (row & 1) * 2; if (v % 2 < 0.22 || bu % 4 < 0.18) s -= 1.4; else s += (hash(Math.floor(bu / 4), row, seed) - 0.5) * 0.7; }
+  if (mat === 'brick') { const row = Math.floor(v / 0.75), bu = u + (row & 1) * 1.1; if (v % 0.75 < 0.16 || bu % 2.2 < 0.16) { m = RM.cement; s = 2.4; } else s = 3.3 + (hash(Math.floor(bu / 2.2), row, seed) - 0.5) * 1.6 + (fbm(u * 0.1, v * 0.1, seed) - 0.5); }
+  s -= streakAt(u, v, top, seed) * 1.3;
+  if (v < 5) s -= (5 - v) / 5 * 1.3;                          // grime / AO at the foot
+  if (top - v < 1.0) s += 1.2; else if (top - v < 1.6) s -= 1.2; // coping + its shadow
+  if (crackAt(u, v, seed)) s -= 2.2;
+  // moss creeping up from the gutter
+  const mh = fbm(u * 0.25, 3, seed + 2) * 7 - 1.5; if (v < mh && mat !== 'brick') { m = RM.moss; s = 2.4 + (mh - v) * 0.3 + (hash(ri(u * 3), ri(v * 3), seed) - 0.5); }
+  r.m = m; r.s = s;
+  const fl = kind === 2 ? g.rfeat : g.feat;
+  if (fl) for (const ft of fl) if (u >= ft.u0 && u < ft.u1 && v >= ft.v0 && v < ft.v1) FEAT[ft.k](r, u - ft.u0, v - ft.v0, ft, kind === 2 ? -side : side || -1);
+  if (kind === 2) r.s -= 0.6; // returns are a touch darker (facing away from the lamps)
+}
+const FEAT = {
+  win(r, u, v, f, side) {
+    const w = f.u1 - f.u0, h = f.v1 - f.v0, e = Math.min(u, w - u, v, h - v);
+    if (e < 0.5) { r.m = RM.cement; r.s = 2.2; return; }
+    if (v < 0.9 && e < 0.9) { r.m = RM.cement; r.s = 5.2; return; }
+    if (f.bars && (u % 0.9) < 0.22) { r.m = RM.dark; r.s = 1.5; return; }
+    if (f.lit) { r.e = e < 1.4 ? Y2 : Y3; if (f.curtain && u < w * 0.35) r.e = Y1; return; }
+    r.m = RM.glass; r.s = 1.3 + (v / h) * 0.8 + ((u + v * 0.6) % 4 < 0.5 ? 1.2 : 0);
+  },
+  door(r, u, v, f) {
+    const w = f.u1 - f.u0, h = f.v1 - f.v0, e = Math.min(u, w - u, h - v);
+    r.m = RM[f.mat || 'cement']; r.s = (f.lvl || 3.2) + (e < 0.6 ? -1.4 : 0) + ((u > w * 0.15 && u < w * 0.85 && ((v > h * 0.55 && v < h * 0.9) || (v > h * 0.1 && v < h * 0.45))) ? -0.7 : 0);
+    if (Math.abs(u - w * 0.82) < 0.3 && Math.abs(v - h * 0.48) < 0.5) { r.m = RM.paper; r.s = 5; }
+  },
+  gate(r, u, v, f) {
+    const w = f.u1 - f.u0, h = f.v1 - f.v0, half = w / 2, lu = u % half, e = Math.min(lu, half - lu, v, h - v);
+    r.m = RM.green; r.s = 3.6 + (fbm(u * 0.3, v * 0.2, 5) - 0.5);
+    if (e < 0.5) r.s -= 1.6; else if ((v > h * 0.12 && v < h * 0.46) || (v > h * 0.54 && v < h * 0.9)) { r.s -= 0.8; if (lu < 1.4 && lu > 0.9) r.s += 1.2; }
+    if (v < h * 0.88 && v > h * 0.12 && (v % 1.6) < 0.25 && lu > 1.6 && lu < half - 1.6) r.s += 0.9; // pressed ribs
+    if (hash(ri(u * 3), 1, 3) < 0.18 && v > h * 0.5 && v < h * 0.5 + hash(ri(u * 3), 2, 3) * 4) { r.m = RM.rust; r.s = 3.6; } // short rust runs
+    if (Math.abs(lu - half + 1.6) < 0.35 && Math.abs(v - h * 0.48) < 0.9) { r.m = RM.cement; r.s = 6; } // handle
+  },
+  poster(r, u, v, f) {
+    const w = f.u1 - f.u0, h = f.v1 - f.v0; r.m = RM.paper; r.s = 4.6 + (fbm(u * 0.5, v * 0.5, f.seed || 1) - 0.5) * 1.4;
+    if (f.red && v > h * 0.7) { r.m = RM.red; r.s = 2.6; }
+    else if (v < h * 0.62 && v > h * 0.1 && (v * 2.6) % 1 < 0.42 && u > w * 0.12 && u < w * (0.5 + hash(ri(v * 2.6), 1, f.seed || 1) * 0.4)) r.s -= 2;
+    if (u > w * 0.8 && v < h * 0.25) { r.s = 0; r.m = RM.dark; } // torn corner
+  },
+  pipe(r, u, v, f) { const w = f.u1 - f.u0, c = Math.abs(u - w / 2) / (w / 2); r.m = RM.cement; r.s = 4.6 - c * 2.4 + (v % 9 < 0.4 ? -1.5 : 0); },
+  meter(r, u, v, f) { const w = f.u1 - f.u0, h = f.v1 - f.v0; r.m = RM.cement; r.s = 5; if (u > w * 0.2 && u < w * 0.8 && v > h * 0.5 && v < h * 0.85) { r.m = RM.glass; r.s = 1.5; } },
+  plate(r) { r.m = RM.blue; r.s = 3.5; },
+  spray(r, u, v, f, side) { // Hangul in world space, reading left→right on screen
+    const px = f.px, cols = Math.floor((side > 0 ? (f.u1 - f.u0 - u) : u) / px), row = Math.floor((f.v1 - f.v0 - v) / px);
+    const adv = 16, ci = Math.floor(cols / adv), gx = cols % adv, ch = f.text[ci]; if (!ch || ch === ' ' || gx > 14 || row > 15) return;
+    const g = GLYPH[ch]; if (!g) return;
+    const on = (gx < 14 && row < 14 && g[row][gx] === '#') || (gx > 0 && row < 14 && g[row][gx - 1] === '#');
+    const drip = row >= 13 && row < 13 + hash(ci * 16 + gx, 5, 9) * 6 && gx > 0 && g[13][gx - 1] === '#';
+    if (on || drip) { r.m = RM.red; r.s = (f.lvl || 3.2) + (hash(cols, row, 3) - 0.5) * 0.6; }
+  },
+  ac(r, u, v, f) { const w = f.u1 - f.u0, h = f.v1 - f.v0, cx = w * 0.38, cy = h * 0.5, d = Math.hypot(u - cx, v - cy); r.m = RM.cement; r.s = 5.4; if (d < h * 0.36) r.s = d > h * 0.3 ? 3 : 4 - ((Math.atan2(v - cy, u - cx) * 3 + 10) % 1 < 0.5 ? 1 : 0); if (v < 0.4) r.s = 3.5; },
+  cable(r, u, v, f) { const k = Math.floor(v / 0.45); if (k % 3 !== 2) { r.m = RM.dark; r.s = 1.6 + (k % 3) * 0.6; } },
+  sign(r, u, v, f) { const w = f.u1 - f.u0, h = f.v1 - f.v0, e = Math.min(u, w - u, v, h - v); r.m = RM.paper; r.s = e < 0.3 ? 2.5 : 5.2 - (fbm(u * 0.4, v * 0.4, 8) - 0.5) * 1.5; if (e > 0.3 && v > h * 0.55) { r.m = RM.red; r.s = 3.2; } },
+  vent(r, u, v) { r.m = RM.dark; r.s = (v % 0.8 < 0.35) ? 3 : 1; }
+};
+function floorTex(r, X, z, ray, sc) {
+  const w = sc.floorW || 12, seed = 31;
+  r.m = RM.ground; r.s = 4.1 + (fbm(X * 0.09, z * 0.06, seed) - 0.5) * 1.6;
+  if (z % 14 < 0.35) r.s -= 1.4;                                    // expansion joints
+  if (Math.abs(X) > w - 1.6) { r.s -= 1.2 + (Math.abs(X) - (w - 1.6)) * 0.5; if (Math.abs(X) > w - 1.2 && (z * 2) % 1 < 0.3) r.s -= 1; } // gutter
+  if (crackAt(X * 0.9, z * 0.7, seed) && hash(ri(X), ri(z), 3) < 0.6) r.s -= 1.2;
+  const pd = fbm(X * 0.12 + 40, z * 0.08, seed + 5); if (pd > 0.66 && Math.abs(X) < w - 2) { r.m = RM.glass; r.s = pd > 0.675 ? 2.4 : 3.6; r.wet = 1; } // puddles (bright lip)
+  if (sc.stepD) { const ph = (z % sc.stepD) / sc.stepD; if (ph < 0.12) r.s += 1.6; else if (ph < 0.3) r.s -= 1.2; }
+}
+// wire in 3D, sagging, projected
+function wire3(b, ray, a, c, sag, col = K0) {
+  let p = null;
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24, x = lerp(a[0], c[0], t), y = lerp(a[1], c[1], t) - sag * 4 * t * (1 - t), z = lerp(a[2], c[2], t);
+    if (z < 0.6) { p = null; continue; }
+    const q = ray.project(x, y, z); if (p) L(b, p[0], p[1], q[0], q[1], col); p = q;
+  }
+}
+// vertical pole in 3D (concrete utility pole), projected width
+function pole3(b, ray, x, z, h, col = K1, hi = G0) {
+  const [sx, sy0] = ray.project(x, ray.ground(z), z), [, sy1] = ray.project(x, ray.ground(z) + h, z), w = Math.max(1, ri(2.6 * ray.sc.f / z));
+  R(b, ri(sx - w / 2), ri(sy1), w, ri(sy0 - sy1), col); if (w > 2) R(b, ri(sx - w / 2), ri(sy1), 1, ri(sy0 - sy1), hi);
+  return [x, ray.ground(z) + h, z];
+}
+
 /* ---- 30_girl.js ---- */
 /* ==========================================================================
    GIRL — one design, three generators that share proportions & colours:
@@ -784,21 +983,22 @@ function girlBack(b, cx, fy, o) {
   const sp = o.spread || 0; // legs apart (stopped mid-step)
   // shadow on ground
   for (let i = -8; i <= 8; i++) { const hgt = Math.max(1, ri(s * (0.9 - Math.abs(i) / 12))); if (Math.abs(i) < 7 || (i & 1)) R(b, ri(X(i)), ri(Y(0.5)) - hgt + 1, ri(s) + 1, hgt, K0); }
-  // legs
+  // legs (lift: walking away — the lifted foot rises, its sole shows)
+  const lift = o.lift || [0, 0];
   for (const side of [-1, 1]) {
-    const lx = side * (2.3 + sp * 0.5), sk = side > 0 ? SKIND : SKIN;
-    pg([[lx - 1.4, -13], [lx + 1.4, -13], [lx + 1.1, -6], [lx + 0.9, -1.2], [lx - 0.9, -1.2], [lx - 1.1, -6]], sk);
-    if (side < 0) pg([[lx + 0.4, -12], [lx + 1.4, -12], [lx + 1.1, -6], [lx + 0.7, -6]], SKIND);
-    pg([[lx - 1.15, -6.5], [lx + 1.15, -6.5], [lx + 1.0, -1], [lx - 1.0, -1]], SOCK);
+    const l = lift[side < 0 ? 0 : 1], lx = side * (2.3 + sp * 0.5), sk = side > 0 ? SKIND : SKIN, fb2 = -l * 2.8;
+    pg([[lx - 1.4, -13], [lx + 1.4, -13], [lx + 1.15, -6], [lx + 0.9, fb2 - 1.2], [lx - 0.9, fb2 - 1.2], [lx - 1.15, -6]], sk);
+    if (side < 0) pg([[lx + 0.4, -12], [lx + 1.4, -12], [lx + 1.15, -6], [lx + 0.7, -6]], SKIND);
+    pg([[lx - 1.15, -6.5], [lx + 1.15, -6.5], [lx + 1.0, fb2 - 1], [lx - 1.0, fb2 - 1]], SOCK);
     rr(lx - 1.0, -6.6, 2.0, 0.5, K0);
-    pg([[lx - 1.2, -1.4], [lx + 1.2, -1.4], [lx + 1.4, 0.2], [lx - 1.4, 0.2]], SHOE);
-    rr(lx - 0.8, -1.3, 1.2, 0.4, G0);
+    pg([[lx - 1.2, fb2 - 1.4], [lx + 1.2, fb2 - 1.4], [lx + 1.4, fb2 + 0.2], [lx - 1.4, fb2 + 0.2]], SHOE);
+    if (l > 0.2) rr(lx - 1.1, fb2 - 0.4, 2.2, 0.6 + l * 0.5, G1); else rr(lx - 0.8, -1.3, 1.2, 0.4, G0);
   }
   // arms hang beside the skirt
   for (const side of [-1, 1]) {
-    const ax = side * 5.0 + sw * 0.2;
-    pg([[ax - 0.9, -32], [ax + 0.9, -32], [ax + 1.0 * side + 0.2, -21.5], [ax + side * 0.2 - 1.0, -21.5]], side > 0 ? SKIND : SKIN);
-    pg([[ax - 1.0, -22.4], [ax + 1.0, -22.4], [ax + 0.8, -20.3], [ax - 0.8, -20.3]], side > 0 ? SKIND : SKIN);
+    const ax = side * 5.0 + sw * 0.2, ay = (o.arm || 0) * side * 0.7;
+    pg([[ax - 0.9, -32], [ax + 0.9, -32], [ax + 1.0 * side + 0.2, -21.5 + ay], [ax + side * 0.2 - 1.0, -21.5 + ay]], side > 0 ? SKIND : SKIN);
+    pg([[ax - 1.0, -22.4 + ay], [ax + 1.0, -22.4 + ay], [ax + 0.8, -20.3 + ay], [ax - 0.8, -20.3 + ay]], side > 0 ? SKIND : SKIN);
   }
   // skirt with pleats
   pg([[-4.6, -25.6], [4.6, -25.6], [6.6, -12.4], [-6.6, -12.4]], SKIRT);
@@ -879,6 +1079,24 @@ const TINY = [
   ['..hhh.', '.hhhhh', '.hhhhs', 'rrhhs.', 'rrwww.', 'rrwvws', 'qqwws.', '.kkkk.', 'kkkkkk', '.s..s.', 's...s.', 'x...x.', 'x....x', 'b...bb'],
   ['..hhh.', '.hhhhh', '.hhhhs', 'rrhhs.', 'rrwww.', 'rrwwws', 'qqwws.', '.kkkk.', '.kkkkk', '..ss..', '..ss..', '..xx..', '..x.x.', '.bb.b.']
 ].map(r => outline(spr(r, TK), K0));
+
+// form shading for flat-filled sprites: each horizontal run of one colour gets a darker
+// edge on both sides (light from the camera side) and a darker last row (core shadow)
+function volumize(b, strength = 1) {
+  const d = b.d, w = b.w, out = d.slice();
+  for (let y = 0; y < b.h; y++) {
+    let x = 0;
+    while (x < w) {
+      const c = d[y * w + x]; if (c === T || EMISSIVE[c]) { x++; continue; }
+      let e = x; while (e + 1 < w && d[y * w + e + 1] === c) e++;
+      const len = e - x + 1;
+      if (len >= 3) { out[y * w + e] = DN[c]; if (len >= 5) out[y * w + x] = DN[c]; if (strength > 1 && len >= 8) { out[y * w + e - 1] = DN[c]; } }
+      x = e + 1;
+    }
+  }
+  for (let y = 0; y + 1 < b.h; y++) for (let x = 0; x < w; x++) { const c = d[y * w + x], u = y > 0 ? d[(y - 1) * w + x] : T; if (c !== T && !EMISSIVE[c] && u === T && c !== HAIR) out[y * w + x] = UP[out[y * w + x]]; }
+  d.set(out);
+}
 
 /* ---- 40_ghost.js ---- */
 /* ==========================================================================
@@ -1015,116 +1233,6 @@ const fb = new Buf(W, H, K0);
 const once = f => { let v; return () => v || (v = f()); };
 const step = (t, fps) => Math.floor(t * fps); // hand-keyed timing helper
 const ANIM = 10; // character animation rate (fps)
-
-/* ---------- S2: the alley, the flickering lamp ---------- */
-const S2_GY = x => 236 - Math.floor(Math.max(0, x) * 0.05); // gently rising ground (uphill to the right)
-const S2W = once(() => {
-  const b = new Buf(W, H, K0), r = rng(22);
-  sky(b, 0, 0, W, [[K1, 14], [T0, 16], [T1, 20], [T2, 22], [T3, 18], [T2, 40]]);
-  strata(b, 0, 26, W, T1, 5, 7, T2);
-  // distant apartments over the ridge (left) — the living city, far away
-  apartments(b, 0, 210, 104, 7, { body: T1, edge: T2, win: T0, lit: 0.06, num: true });
-  // up-hill houses behind the alley wall
-  const back = [[-4, 96, 64], [56, 84, 58], [112, 78, 70], [178, 70, 64], [238, 60, 78], [312, 56, 70], [378, 46, 60], [434, 40, 60]];
-  for (let i = 0; i < back.length; i++) {
-    const [x, y, w] = back[i];
-    wall(b, x, y, w, 150 - y + 40, RAMP.tealD, 300 + i, { moss: false, cracks: 1, streak: 10 });
-    shift(b, -1, [x, y, w, 200]);
-    if (i % 2) slate(b, x - 3, y - 9, w + 6, 9, 40 + i, { c1: G1, c2: G0, c3: G2 });
-    else { R(b, x - 1, y - 2, w + 2, 2, G1); waterTank(b, x + 6 + (i * 13) % (w - 24), y - 2, 0.9); if (i === 4) basin(b, x + w - 16, y - 2); if (i === 2) styro(b, x + w - 22, y - 2, 10, 5, 77); }
-    for (let k = 0; k < 2; k++) {
-      const wx = x + 8 + k * (w >> 1), wy = y + 12;
-      windowW(b, wx, wy, 9, 8, { lit: (i === 3 && k === 1) || (i === 6 && k === 0), glass: K1, refl: T1, frame: K1, barc: K1 });
-    }
-  }
-  // red tree crowning the hill
-  redTree(b, 404, 50, 34, 22, 9, { trunk: 22 });
-  return b;
-});
-const S2M = once(() => { // the alley wall row (foreground plane of the shot)
-  const b = new Buf(W, H), gy = S2_GY;
-  // A: cement wall + green gate (x 0..96)
-  wall(b, 0, 130, 96, 110, RAMP.cement, 11, { cracks: 3, peel: 0, base: gy });
-  R(b, 0, 128, 96, 3, G3); R(b, 0, 131, 96, 1, G0);
-  for (let i = 0; i < 96; i += 4) { P(b, i + 1, 127, T5); P(b, i + 2, 126, G4); } // broken glass on wall top
-  gate(b, 30, gy(70) - 58, 40, 58, {});
-  digits(b, '37', 74, gy(70) - 54, G4); R(b, 73, gy(70) - 56, 9, 9, T); R(b, 73, gy(70) - 56, 9, 9, B0); digits(b, '37', 74, gy(70) - 53, G5);
-  // B: teal-painted house with spray (x 96..250)
-  wall(b, 96, 108, 154, 132, RAMP.teal, 12, { peel: 9, cracks: 3, streak: 20, base: gy });
-  R(b, 94, 104, 158, 4, G1); R(b, 94, 104, 158, 1, G3); R(b, 94, 108, 158, 1, K1);
-  windowW(b, 196, 124, 18, 14, { glass: K1 });
-  meter(b, 104, 150); pipe(b, 246, 108, gy(250));
-  hangul(b, '철거 예정', 128, 158, R3, { bold: 1, spray: 1, seed: 4, gap: 1 });
-  poster(b, 222, 150, 12, 16, 3, { red: true }); poster(b, 205, 158, 13, 10, 4, {}); poster(b, 236, 168, 8, 11, 5, { c: G3 });
-  // C: low brick wall with styrofoam gardens, laundry above (x 250..330)
-  brickWall(b, 250, 170, 80, 70, 21);
-  R(b, 249, 168, 82, 2, G2);
-  styro(b, 254, 168, 14, 7, 31); styro(b, 270, 168, 12, 6, 32); basin(b, 286, 168, 10); styro(b, 299, 168, 16, 8, 33, false);
-  redFlowers(b, 252, gy(330) - 1, 76, 41, 0.35);
-  // second-floor house behind the low wall
-  wall(b, 250, 96, 80, 72, RAMP.cementD, 13, { moss: false, cracks: 2 });
-  slate(b, 246, 88, 88, 8, 14, {});
-  windowW(b, 262, 112, 12, 12, { glass: K1 }); windowW(b, 300, 112, 12, 12, { lit: true, curtain: true });
-  // D: vacant house — 공가 + X (x 330..480)
-  wall(b, 330, 116, 150, 124, RAMP.cement, 15, { peel: 4, cracks: 4, streak: 18, base: gy });
-  R(b, 328, 112, 152, 4, G1); R(b, 328, 112, 152, 1, G3);
-  door(b, 352, gy(370) - 44, 20, 44, G2);
-  hangul(b, '공가', 380, 136, R3, { bold: 1, spray: 0.8, seed: 9 }); xMark(b, 448, 146, 10);
-  windowW(b, 418, 126, 14, 12, { glass: K0 });
-  R(b, 418, 126, 14, 12, K0); L(b, 418, 126, 431, 137, G1); // broken pane, boarded
-  R(b, 416, 130, 18, 2, Y0);
-  acUnit(b, 392, 168); poster(b, 460, 174, 12, 14, 6, { c: G3, photo: true });
-  // floor (rising): walls run down behind it, the floor is clipped per column
-  const fl = new Buf(W, H); tex(fl, 0, 200, W, 70, RAMP.groundD, 51, 0.09, 0.08);
-  for (let x = 0; x < W; x += 29 + (hash(x, 1, 5) * 20 | 0)) L(fl, x, 214, x - 14, 270, K1);
-  for (let x = 0; x < W; x++) { const y = gy(x); for (let j = y; j < H; j++) b.d[j * W + x] = fl.d[j * W + x]; P(b, x, y, K1); }
-  // gutter line and a cover
-  for (let x = 0; x < W; x++) P(b, x, gy(x) + 3, G0);
-  R(b, 186, gy(186) + 2, 14, 3, K1); for (let i = 0; i < 14; i += 2) P(b, 186 + i, gy(186) + 3, G2);
-  return b;
-});
-
-const S2_LAMP = { x: 112, y: 116 };
-// lamp state: 1 on, 0 off, 'f' stuttering
-const S2_BLACK = [[15.0, 15.6], [18.2, 18.8], [20.6, 21.2], [22.5, 23.1]];
-const S2_GHOST = [[15.6, 16, 'stand', 1], [18.8, 58, 'stand', 2], [21.2, 100, 'tilt', 2], [23.1, 168, 'lean', 2]];
-function s2LampOn(t) {
-  for (const [a, z] of S2_BLACK) {
-    if (t >= a - 0.5 && t < a) return [1, 0, 1][Math.min(2, step(t - (a - 0.5), 6))] === 1; // one stutter (≤3 flashes/s) before the dark
-    if (t >= a && t < z) return false;
-  }
-  return true;
-}
-function s2Ghost(t) { let g = null; for (const e of S2_GHOST) if (t >= e[0]) g = e; return g; }
-function shotAlley(t, lt) {
-  layer(fb, S2W(), 0, 0);
-  const m = S2M();
-  // poles + wires behind the wall plane top
-  layer(fb, m, 0, 0);
-  const on = s2LampOn(t);
-  const arm = pole(fb, 96, 70, S2_GY(96) + 1, -3, { trans: true, tag: true });
-  pole(fb, 360, 52, 116, 2, {});
-  wire(fb, -10, 40, arm[0][0], arm[0][1], 6); wire(fb, arm[1][0], arm[1][1], 362, 57, 16); wire(fb, arm[2][0], arm[2][1], 368, 57, 22);
-  wire(fb, arm[3][0], arm[3][1], 490, 30, 10); wire(fb, arm[4][0], arm[4][1], 490, 68, 30); wire(fb, -10, 58, arm[4][0], arm[4][1], 12);
-  wire(fb, 200, -2, 365, 66, 8, K1);
-  // laundry line between the 2nd floor and the vacant house
-  laundry(fb, 256, 100, 340, 120, 8, [{ t: 0.12, k: 'shirt', c: G4, p: 0 }, { t: 0.36, k: 'towel', c: R2, p: 2 }, { t: 0.55, k: 'sock', c: G3, p: 1 }, { t: 0.66, k: 'shirt', c: T4, p: 3 }], step(t, 4), 3);
-  const lp = lamp(fb, 96 - 3 + 1, 112, on, 1);
-  // ghost (never seen moving: only ever drawn at a held mark)
-  const g = s2Ghost(t), black = !on && S2_BLACK.some(([a, z]) => t >= a && t < z);
-  if (g && !black) drawGhost(fb, g[1], S2_GY(g[1]) + 1, 0.95, g[2], { eyes: g[3] });
-  // girl walks on frame ticks (no sliding)
-  const f = step(lt, ANIM * 0.8), gx = -30 + f * 3.4;
-  girlSide(fb, 'walk', f, gx, S2_GY(gx) + 1);
-  // lighting: dusk ambient, lamp cone, warm window spill
-  if (on) light(fb, [{ x: lp[0], y: lp[1], r: 120, k: 3.2, sq: 0.7, cone: { spread: 0.75, w: 6 } }, { x: 306, y: 118, r: 28, k: 1.2, sq: 1.4 }], -1, [0, 60, W, 210]);
-  else light(fb, [{ x: 306, y: 118, r: 26, k: 1.0, sq: 1.4 }], -2.6, [0, 60, W, 210]);
-  if (black) {
-    shift(fb, -3);
-    const nx = S2_GHOST.find(e => e[0] > t - 0.01 && e[0] - t < 0.2); // eyes arrive a beat before the light
-    if (nx) drawGhost(fb, nx[1], S2_GY(nx[1]) + 1, 0.95, nx[2], { eyes: 2, c: K0, rim: K0 });
-  }
-}
 
 /* ---------- shot table ---------- */
 const SHOTS = [];
@@ -1721,10 +1829,149 @@ function shotRoom(t, lt) {
 }
 function shotBlack() { fb.d.fill(K0); }
 
+/* ---- 53_s2ray.js ---- */
+/* ---------- S2 (rebuilt): perspective alley, she walks away; the convex mirror shows what follows ---------- */
+const S2_SLOPE = 0.16;
+const S2SC = {
+  f: 330, vx: 232, vy: 128, camY: 15, slope: S2_SLOPE, floorW: 11,
+  walls: {
+    [-1]: [
+      { z0: 2, z1: 40, w: 11, h: 21, mat: 'block', seed: 3, feat: [{ k: 'poster', u0: 15, u1: 19, v0: 7, v1: 13, seed: 1 }, { k: 'poster', u0: 19.5, u1: 22, v0: 8, v1: 12, seed: 3, red: 1 }, { k: 'gate', u0: 25, u1: 35, v0: 0, v1: 16 }, { k: 'plate', u0: 35.5, u1: 37.5, v0: 12, v1: 14 }] },
+      { z0: 2, z1: 40, w: 19, top: 60, base: -50, h: 0, mat: 'teal', seed: 4, feat: [{ k: 'win', u0: 8, u1: 15, v0: 72, v1: 80, bars: 1 }, { k: 'win', u0: 24, u1: 31, v0: 74, v1: 82, bars: 1 }] },
+      { z0: 40, z1: 72, w: 9.5, ret: 19, h: 34, mat: 'cement', seed: 5, rfeat: [{ k: 'spray', u0: 9.8, u1: 18.8, v0: 22.4, v1: 28, px: 0.28, text: '철거' }, { k: 'spray', u0: 9.8, u1: 18.8, v0: 16, v1: 21.6, px: 0.28, text: '예정' }], feat: [{ k: 'pipe', u0: 66, u1: 67, v0: 0, v1: 34 }, { k: 'meter', u0: 41, u1: 43, v0: 10, v1: 13 }, { k: 'win', u0: 47, u1: 56, v0: 22, v1: 29, bars: 1 }] },
+      { z0: 72, z1: 112, w: 11, h: 27, mat: 'brick', seed: 6, feat: [{ k: 'door', u0: 80, u1: 86, v0: 0, v1: 13, mat: 'blue', lvl: 2.6 }, { k: 'poster', u0: 92, u1: 96, v0: 7, v1: 12, seed: 7 }] },
+      { z0: 112, z1: 240, w: 10, ret: 11, h: 36, mat: 'teal', seed: 7, feat: [{ k: 'win', u0: 128, u1: 136, v0: 18, v1: 25, lit: 1, curtain: 1 }, { k: 'win', u0: 160, u1: 168, v0: 18, v1: 25 }] }
+    ],
+    [1]: [
+      { z0: 2, z1: 30, w: 11, h: 33, mat: 'cement', seed: 8, feat: [{ k: 'cable', u0: 0, u1: 30, v0: 22, v1: 23.4 }, { k: 'pipe', u0: 14, u1: 14.8, v0: 0, v1: 33 }, { k: 'meter', u0: 15.5, u1: 17.5, v0: 11, v1: 14 }, { k: 'meter', u0: 18, u1: 20, v0: 11, v1: 14 }, { k: 'sign', u0: 20.5, u1: 26, v0: 14, v1: 18 }, { k: 'poster', u0: 21, u1: 24, v0: 5, v1: 10, seed: 9 }, { k: 'poster', u0: 24.5, u1: 27, v0: 6, v1: 9.5, seed: 19, red: 1 }, { k: 'door', u0: 6, u1: 11, v0: 0, v1: 13, lvl: 2.8 }] },
+      { z0: 30, z1: 50, w: 30, h: 9, mat: 'block', seed: 9 }, // side-alley opening: a low wall far back
+      { z0: 30, z1: 50, w: 34, h: 40, mat: 'cement', seed: 10, feat: [{ k: 'win', u0: 36, u1: 42, v0: 16, v1: 22 }] },
+      { z0: 50, z1: 96, w: 10, ret: 34, h: 30, mat: 'teal', seed: 11, feat: [{ k: 'ac', u0: 56, u1: 62, v0: 14, v1: 18 }, { k: 'poster', u0: 66, u1: 70, v0: 6, v1: 11, seed: 12, red: 1 }, { k: 'poster', u0: 70.5, u1: 73, v0: 7, v1: 10, seed: 13 }, { k: 'win', u0: 78, u1: 86, v0: 18, v1: 24, bars: 1 }], rfeat: [{ k: 'spray', u0: 11, u1: 22, v0: 12, v1: 17.6, px: 0.35, text: '공가' }, { k: 'poster', u0: 24, u1: 27, v0: 6, v1: 11, seed: 15 }] },
+      { z0: 96, z1: 240, w: 11, ret: 10, h: 24, mat: 'block', seed: 12, feat: [{ k: 'gate', u0: 104, u1: 113, v0: 0, v1: 14 }] }
+    ]
+  },
+  end: { z: 236, x0: -16, x1: 16, h: 44, mat: 'cement', seed: 14, feat: [{ k: 'win', u0: -6, u1: 2, v0: 20, v1: 27, lit: 1 }, { k: 'door', u0: 4, u1: 9, v0: 0, v1: 14, mat: 'green', lvl: 2.5 }] }
+};
+const S2_LAMPS = [{ x: 7, z: 10, h: 27 }, { x: -7.5, z: 66, h: 28 }, { x: 8, z: 136, h: 26 }];
+const S2_BLACK = [[13.0, 13.4], [15.6, 16.0], [18.2, 18.6], [22.1, 22.5]];
+const S2_GHOST = [[13.4, 92, 'stand', 1], [16.0, 58, 'stand', 2], [18.6, 32, 'tilt', 2], [22.5, 13, 'lean', 2]];
+function s2LampOn(t) {
+  for (const [a, z] of S2_BLACK) {
+    if (t >= a - 0.5 && t < a) return [1, 0, 1][Math.min(2, step(t - (a - 0.5), 6))] === 1;
+    if (t >= a && t < z) return false;
+  }
+  return true;
+}
+function s2Ghost(t) { let g = null; for (const e of S2_GHOST) if (t >= e[0]) g = e; return g; }
+const S2Ray = once(() => new Ray(S2SC));
+const S2Sky = once(() => { // dusk sky + the world beyond the alley's end
+  const b = new Buf(W, H, K1);
+  sky(b, 0, 0, W, [[K1, 14], [T0, 18], [T1, 22], [T2, 26], [T3, 22], [T4, 16], [T3, 12], [Y0, 3], [T2, 200]]);
+  strata(b, 0, 18, W, T1, 15, 9, T2); strata(b, 60, 60, W - 120, T2, 16, 5, T3);
+  apartments(b, 100, 380, 104, 21, { body: T2, edge: T3, win: T1, lit: 0.05, num: true });
+  for (let x = 0; x < W; x++) { const y = 96 + Math.floor(fbm(x * 0.03, 4, 22) * 14); R(b, x, y, 1, H - y, T1); }
+  redTree(b, 300, 70, 30, 20, 23, { trunk: 30 });
+  redTree(b, 140, 82, 18, 12, 24, { trunk: 18 });
+  return b;
+});
+// reverse view (for the mirror): looking back down the hill, the lamp right there, the city lights below
+const S2RSC = {
+  f: 150, vx: 240, vy: 150, camY: 24, slope: -0.16, floorW: 11,
+  walls: {
+    [-1]: [{ z0: 1, z1: 50, w: 11, h: 50, mat: 'cement', seed: 41, feat: [{ k: 'door', u0: 14, u1: 19, v0: -2, v1: 12 }] }, { z0: 50, z1: 120, w: 11, h: 44, mat: 'teal', seed: 42 }, { z0: 120, z1: 220, w: 11, h: 40, mat: 'brick', seed: 43 }],
+    [1]: [{ z0: 1, z1: 40, w: 11, h: 40, mat: 'block', seed: 44, feat: [{ k: 'gate', u0: 18, u1: 30, v0: -4, v1: 13 }] }, { z0: 40, z1: 130, w: 11, h: 40, mat: 'cement', seed: 45 }, { z0: 130, z1: 220, w: 11, h: 36, mat: 'teal', seed: 46 }]
+  }
+};
+const S2RRay = once(() => new Ray(S2RSC));
+const S2RSky = once(() => {
+  const b = new Buf(W, H, K1); sky(b, 0, 0, W, [[T0, 40], [T1, 40], [T0, 200]]);
+  for (let i = 0; i < 260; i++) { const x = hash(i, 1, 51) * W, y = 120 + hash(i, 2, 51) * 60; P(b, x, y, hash(i, 3, 51) < 0.7 ? Y2 : Y1); } // the city below
+  return b;
+});
+function s2Lights(on) {
+  return S2_LAMPS.map((l, i) => ({ x: l.x - Math.sign(l.x) * 2, y: S2_SLOPE * l.z + l.h, z: l.z, r: i === 0 ? 44 : 40, k: i === 0 ? (on ? 3.2 : 0) : 2.8 }));
+}
+const S2Buf = new Buf(W, H), S2RBuf = new Buf(W, H);
+function s2Base(t, on) {
+  const ray = S2Ray(), sk = S2Sky();
+  ray.shade(fb, s2Lights(on), -1.3, { z0: 70, z1: 250, ramp: RM.sky, lvl: 3.2, max: 0.85 }, (x, y) => sk.d[y * W + x]);
+  // poles, wires, lamp heads (projected)
+  const pA = pole3(fb, ray, -9.6, 44, 34), pB = pole3(fb, ray, 9.8, 104, 32);
+  for (const [a, c, sg] of [[pA, pB, 6], [[pA[0] + 2, pA[1], pA[2]], [pB[0] - 2, pB[1] - 2, pB[2]], 9], [pA, [11, 30, 6], 5], [pA, [-11, 26, 3], 4], [pB, [-10, 48, 160], 10], [pB, [11, 40, 200], 6], [[-11, 30, 20], [11, 36, 28], 3], [[-11, 26, 96], [11, 31, 112], 2]])
+    wire3(fb, ray, a, c, sg, K0);
+  for (let i = 1; i < S2_LAMPS.length; i++) {
+    const l = S2_LAMPS[i], [sx, sy] = ray.project(l.x, S2_SLOPE * l.z + l.h, l.z), w = Math.max(3, ri(3.2 * S2SC.f / l.z));
+    R(fb, ri(sx - w / 2), ri(sy) - 1, w, 2, K1); R(fb, ri(sx - w / 2) + 1, ri(sy) + 1, w - 2, 1, Y3); P(fb, ri(sx), ri(sy) + 2, Y2);
+    const [ax, ay] = ray.project(l.x * 1.35, S2_SLOPE * l.z + l.h + 1, l.z); L(fb, ax, ay, sx, sy - 1, K1);
+  }
+  // laundry across the alley at z=58 (projected, native-size shapes)
+  const lz = 58, [lx0, ly0] = ray.project(-9.5, S2_SLOPE * lz + 25, lz), [lx1, ly1] = ray.project(10, S2_SLOPE * lz + 27, lz);
+  laundry(fb, lx0, ly0, lx1, ly1, 6, [{ t: 0.15, k: 'shirt', c: G3, p: 0 }, { t: 0.4, k: 'towel', c: R2, p: 2 }, { t: 0.62, k: 'pants', c: T2, p: 1 }, { t: 0.82, k: 'sock', c: G4, p: 3 }], step(t, 3), 2, 0.75, K0);
+}
+// the girl walking away up the alley
+function s2Girl(t, on) {
+  const ray = S2Ray(), z = 48 + (t - 9) * 4.6, X = 1.5;
+  const [sx, sy] = ray.project(X, S2_SLOPE * z, z), s = Math.round((16 * S2SC.f / z) / 47 / 0.04) * 0.04;
+  const ph = step(t, 8) % 8, lifts = [0, 0.35, 0.8, 0.35, 0, 0, 0, 0];
+  const g = new Buf(W, H);
+  girlBack(g, ri(sx), ri(sy), { s, lift: [lifts[ph], lifts[(ph + 4) % 8]], arm: [0, 0.5, 1, 0.5, 0, -0.5, -1, -0.5][ph], sway: [0, 0.3, 0.5, 0.3, 0, -0.3, -0.5, -0.3][ph] });
+  volumize(g);
+  const lv = Math.round(ray.light(s2Lights(on), -1.3, X, S2_SLOPE * z + 10, z));
+  if (lv) remapRect(g, 0, 0, W, H, lv > 0 ? UP : DN); if (lv < -1) remapRect(g, 0, 0, W, H, DN);
+  blit(fb, g, 0, 0);
+}
+// the convex mirror: reverse view, fisheye, flipped
+function s2Mirror(t, on, cx, cy, Rm) {
+  const rr = S2RRay(), rs = S2RSky(), dark = !on;
+  rr.shade(S2RBuf, [{ x: -2, y: 26, z: 9, r: 50, k: on ? 3.6 : 0 }], -2.2, { z0: 40, z1: 200, ramp: RM.dark, lvl: 2, max: 0.9 }, (x, y) => rs.d[y * W + x]);
+  if (on) { const [lx, ly] = rr.project(-2, 28, 9); R(S2RBuf, ri(lx) - 8, ri(ly) - 2, 16, 3, K1); R(S2RBuf, ri(lx) - 6, ri(ly) + 1, 12, 2, Y3); }
+  const g = s2Ghost(t), black = S2_BLACK.some(([a, z]) => t >= a && t < z);
+  const next = S2_GHOST.find(e => e[0] > t && e[0] - t < 0.15);
+  const gh = black ? (next ? [next[1], next[2], 2, true] : null) : g ? [g[1], g[2], g[3], false] : null;
+  if (gh) {
+    const [gz, pose, eyes, eyesOnly] = gh, [gx, gy] = rr.project(0, S2RSC.slope * gz, gz), sc = (36 * S2RSC.f / gz) / 104;
+    const gb = new Buf(W, H); drawGhost(gb, gx, gy, sc, pose, { eyes });
+    if (eyesOnly) for (let i = 0; i < gb.d.length; i++) if (!EMISSIVE[gb.d[i]]) gb.d[i] = T;
+    blit(S2RBuf, gb, 0, 0);
+  }
+  if (black) for (let i = 0; i < S2RBuf.d.length; i++) if (!EMISSIVE[S2RBuf.d[i]]) S2RBuf.d[i] = DN[DN[DN[S2RBuf.d[i]]]];
+  // sample into the disc: barrel distortion, horizontal flip, darker toward the rim
+  for (let y = -Rm; y <= Rm; y++) for (let x = -Rm; x <= Rm; x++) {
+    const r = Math.hypot(x, y) / Rm; if (r > 1) continue;
+    const k = 0.62 + 0.38 * r * r, sx = ri(240 - x / Rm * 236 * k), sy = ri(150 + y / Rm * 134 * k);
+    let c = S2RBuf.d[clamp(sy, 0, H - 1) * W + clamp(sx, 0, W - 1)];
+    if (r > 0.86 && bay(x, y) < (r - 0.86) * 7) c = DN[c];
+    P(fb, cx + x, cy + y, c);
+  }
+  // glass glint + orange rim + hood
+  for (let a = 0; a < 40; a++) { const q = (205 + a * 1.2) * D2R; if (a % 7 < 5) P(fb, cx + Math.cos(q) * (Rm - 3), cy + Math.sin(q) * (Rm - 3), T5); }
+  const rw = Math.max(2, ri(Rm / 14)); for (let k = 1; k <= rw + 2; k++) ellO(fb, cx, cy, Rm + k, Rm + k, k === 1 ? R2 : k <= rw / 2 + 1 ? R4 : k <= rw + 1 ? R3 : K0);
+  for (let x = -Rm; x <= Rm; x++) { const yy = -Math.sqrt(Math.max(0, (Rm + 4) ** 2 - x * x)); P(fb, cx + x, cy + yy - 1, R1); P(fb, cx + x, cy + yy - 2, K1); }
+}
+function shotAlleyRayWide(t, lt) {
+  const on = s2LampOn(t);
+  s2Base(t, on); s2Girl(t, on);
+  // mirror on its arm, bolted to the right wall at z=16
+  const mz = 28, my0 = S2_SLOPE * mz + 17, ray = S2Ray(), [mx, my] = ray.project(8, my0, mz), Rm = ri(2.6 * S2SC.f / mz);
+  const [wx, wy] = ray.project(11, my0 + 1, mz + 1); L(fb, wx, wy, mx + Rm, my, K1, 3); R(fb, ri(mx) - 1, ri(my) + Rm, 3, 60, K1);
+  s2Mirror(t, on, ri(mx), ri(my), Rm);
+}
+function shotAlleyMirror(t, lt) { // cut-in: the mirror fills the frame; the alley behind, the thing in it
+  const on = s2LampOn(t);
+  sky(fb, 0, 0, W, [[K0, 30], [K1, 60], [T0, 200]]);
+  wall(fb, 0, 0, W, H, RAMP.cementD, 61, { moss: false, cracks: 4, streak: 40 }); shift(fb, -1);
+  wire(fb, -10, 30, 490, 10, 20, K0); wire(fb, -10, 46, 490, 30, 28, K0);
+  R(fb, 236, 200, 8, 70, K1); R(fb, 236, 200, 2, 70, G0); L(fb, 244, 150, 330, 128, K1, 4);
+  s2Mirror(t, on, 238, 132, 104);
+  light(fb, [{ x: 160, y: 30, r: 300, k: on ? 1.4 : 0 }], on ? -0.4 : -1.2, null, 0.5);
+}
+
 /* ---- 59_timeline.js ---- */
 /* timeline (seconds) */
 addShot(0, 9, shotWide, 'S1 wide');
-addShot(9, 24, shotAlley, 'S2 alley');
+addShot(9, 17.4, shotAlleyRayWide, 'S2a alley (behind her)');
+addShot(17.4, 20.4, shotAlleyMirror, 'S2b mirror');
+addShot(20.4, 24, shotAlleyRayWide, 'S2c alley (behind her)');
 addShot(24, 33.5, shotShadow, 'S3 shadow');
 addShot(33.5, 48.5, shotChase, 'S4 chase');
 addShot(48.5, 59.5, shotStairs, 'S5 stairs');

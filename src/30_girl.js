@@ -167,21 +167,22 @@ function girlBack(b, cx, fy, o) {
   const sp = o.spread || 0; // legs apart (stopped mid-step)
   // shadow on ground
   for (let i = -8; i <= 8; i++) { const hgt = Math.max(1, ri(s * (0.9 - Math.abs(i) / 12))); if (Math.abs(i) < 7 || (i & 1)) R(b, ri(X(i)), ri(Y(0.5)) - hgt + 1, ri(s) + 1, hgt, K0); }
-  // legs
+  // legs (lift: walking away — the lifted foot rises, its sole shows)
+  const lift = o.lift || [0, 0];
   for (const side of [-1, 1]) {
-    const lx = side * (2.3 + sp * 0.5), sk = side > 0 ? SKIND : SKIN;
-    pg([[lx - 1.4, -13], [lx + 1.4, -13], [lx + 1.1, -6], [lx + 0.9, -1.2], [lx - 0.9, -1.2], [lx - 1.1, -6]], sk);
-    if (side < 0) pg([[lx + 0.4, -12], [lx + 1.4, -12], [lx + 1.1, -6], [lx + 0.7, -6]], SKIND);
-    pg([[lx - 1.15, -6.5], [lx + 1.15, -6.5], [lx + 1.0, -1], [lx - 1.0, -1]], SOCK);
+    const l = lift[side < 0 ? 0 : 1], lx = side * (2.3 + sp * 0.5), sk = side > 0 ? SKIND : SKIN, fb2 = -l * 2.8;
+    pg([[lx - 1.4, -13], [lx + 1.4, -13], [lx + 1.15, -6], [lx + 0.9, fb2 - 1.2], [lx - 0.9, fb2 - 1.2], [lx - 1.15, -6]], sk);
+    if (side < 0) pg([[lx + 0.4, -12], [lx + 1.4, -12], [lx + 1.15, -6], [lx + 0.7, -6]], SKIND);
+    pg([[lx - 1.15, -6.5], [lx + 1.15, -6.5], [lx + 1.0, fb2 - 1], [lx - 1.0, fb2 - 1]], SOCK);
     rr(lx - 1.0, -6.6, 2.0, 0.5, K0);
-    pg([[lx - 1.2, -1.4], [lx + 1.2, -1.4], [lx + 1.4, 0.2], [lx - 1.4, 0.2]], SHOE);
-    rr(lx - 0.8, -1.3, 1.2, 0.4, G0);
+    pg([[lx - 1.2, fb2 - 1.4], [lx + 1.2, fb2 - 1.4], [lx + 1.4, fb2 + 0.2], [lx - 1.4, fb2 + 0.2]], SHOE);
+    if (l > 0.2) rr(lx - 1.1, fb2 - 0.4, 2.2, 0.6 + l * 0.5, G1); else rr(lx - 0.8, -1.3, 1.2, 0.4, G0);
   }
   // arms hang beside the skirt
   for (const side of [-1, 1]) {
-    const ax = side * 5.0 + sw * 0.2;
-    pg([[ax - 0.9, -32], [ax + 0.9, -32], [ax + 1.0 * side + 0.2, -21.5], [ax + side * 0.2 - 1.0, -21.5]], side > 0 ? SKIND : SKIN);
-    pg([[ax - 1.0, -22.4], [ax + 1.0, -22.4], [ax + 0.8, -20.3], [ax - 0.8, -20.3]], side > 0 ? SKIND : SKIN);
+    const ax = side * 5.0 + sw * 0.2, ay = (o.arm || 0) * side * 0.7;
+    pg([[ax - 0.9, -32], [ax + 0.9, -32], [ax + 1.0 * side + 0.2, -21.5 + ay], [ax + side * 0.2 - 1.0, -21.5 + ay]], side > 0 ? SKIND : SKIN);
+    pg([[ax - 1.0, -22.4 + ay], [ax + 1.0, -22.4 + ay], [ax + 0.8, -20.3 + ay], [ax - 0.8, -20.3 + ay]], side > 0 ? SKIND : SKIN);
   }
   // skirt with pleats
   pg([[-4.6, -25.6], [4.6, -25.6], [6.6, -12.4], [-6.6, -12.4]], SKIRT);
@@ -262,3 +263,21 @@ const TINY = [
   ['..hhh.', '.hhhhh', '.hhhhs', 'rrhhs.', 'rrwww.', 'rrwvws', 'qqwws.', '.kkkk.', 'kkkkkk', '.s..s.', 's...s.', 'x...x.', 'x....x', 'b...bb'],
   ['..hhh.', '.hhhhh', '.hhhhs', 'rrhhs.', 'rrwww.', 'rrwwws', 'qqwws.', '.kkkk.', '.kkkkk', '..ss..', '..ss..', '..xx..', '..x.x.', '.bb.b.']
 ].map(r => outline(spr(r, TK), K0));
+
+// form shading for flat-filled sprites: each horizontal run of one colour gets a darker
+// edge on both sides (light from the camera side) and a darker last row (core shadow)
+function volumize(b, strength = 1) {
+  const d = b.d, w = b.w, out = d.slice();
+  for (let y = 0; y < b.h; y++) {
+    let x = 0;
+    while (x < w) {
+      const c = d[y * w + x]; if (c === T || EMISSIVE[c]) { x++; continue; }
+      let e = x; while (e + 1 < w && d[y * w + e + 1] === c) e++;
+      const len = e - x + 1;
+      if (len >= 3) { out[y * w + e] = DN[c]; if (len >= 5) out[y * w + x] = DN[c]; if (strength > 1 && len >= 8) { out[y * w + e - 1] = DN[c]; } }
+      x = e + 1;
+    }
+  }
+  for (let y = 0; y + 1 < b.h; y++) for (let x = 0; x < w; x++) { const c = d[y * w + x], u = y > 0 ? d[(y - 1) * w + x] : T; if (c !== T && !EMISSIVE[c] && u === T && c !== HAIR) out[y * w + x] = UP[out[y * w + x]]; }
+  d.set(out);
+}
