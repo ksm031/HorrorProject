@@ -40,13 +40,32 @@ function shotOpen(t, lt) {
   fadeIn(fb, Math.min(4, step(lt, 2)));
 }
 
+// S1b: closer, from just up the alley — she climbs toward us, face in shade; we turn to follow her as she passes (S2)
+const S1_SHIFT = 96;
+function shiftWalls(ws, dz) { const o = { [-1]: [], [1]: [] }; for (const sd of [-1, 1]) for (const g of ws[sd]) { if (g.z1 + dz <= 1) continue; o[sd].push({ ...g, z0: Math.max(1, g.z0 + dz), z1: g.z1 + dz, ret: g.z0 + dz >= 1 ? g.ret : undefined, feat: g.feat ? g.feat.map(f => ({ ...f, u0: f.u0 + dz, u1: f.u1 + dz })) : g.feat }); } return o; }
+const S1BSC = { f: 220, vx: 240, vy: 112, camY: 14, slope: S1SC.slope, floorW: 11, floorZ: 172 - S1_SHIFT, walls: shiftWalls(S1SC.walls, -S1_SHIFT), groundFn: z => 0 };
+const S1BR = rayShot(S1BSC);
+function shotOpenB(t, lt) {
+  const ray = S1BR(), bk = S1Back(), g = S1SC.slope, lt0 = t; // time since the film began
+  const lamps = S1_LAMPS.filter(l => l.z - S1_SHIFT > 6).map(l => ({ ...l, z: l.z - S1_SHIFT }));
+  const lights = lamps.map(l => ({ x: l.x * 0.8, y: g * l.z + l.h - 1, z: l.z, r: 40, k: 2.6 }));
+  ray.shadeK(fb, 's1b', lights, -2.0, FOG_DUSK, (x, y) => bk.d[y * W + x]);
+  for (const l of lamps) lampHead(fb, ray, l.x, g * l.z + l.h, l.z, true);
+  const z = 152 - lt0 * 4.4 - S1_SHIFT, ph = step(lt0, 7) % 8, lifts = [0, 0.35, 0.8, 0.35, 0, 0, 0, 0];
+  const [sx, sy] = ray.project(-1, g * z, z), s = Math.round((16 * S1BSC.f / z) / 47 / 0.04) * 0.04, gb = new Buf(W, H);
+  girlFront(gb, ri(sx), ri(sy) + ([0, 1, 0, 0, 0, 1, 0, 0][ph]), { s, lift: [lifts[ph], lifts[(ph + 4) % 8]], arm: [0, 0.5, 1, 0.5, 0, -0.5, -1, -0.5][ph] });
+  litSprite(fb, gb, ray.light(lights, -1.8, -1, g * z + 10, z) - 0.2);
+}
+
 /* ---------- S3: she stops at a wall — two shadows; she turns; it is there ---------- */
 const S3SC = {
   f: 190, vx: 240, vy: 150, camY: 15, slope: 0, floorW: 40, noTerrace: 1, walls: { [-1]: [], [1]: [] },
-  end: { z: 36, x0: -60, x1: 60, h: 60, mat: 'cement', seed: 71, lvl: 4.6, feat: [
-    { k: 'pipe', u0: -27, u1: -26, v0: 0, v1: 60 }, { k: 'meter', u0: -25, u1: -23, v0: 13, v1: 16 }, { k: 'cable', u0: -60, u1: 60, v0: 30, v1: 30.9 },
-    { k: 'spray', u0: -24.6, u1: 0, v0: 16, v1: 16 + 16 * 2 * 36 / 190, px: 2 * 36 / 190, text: '출입금지' },
-    { k: 'poster', u0: 13, u1: 17, v0: 11, v1: 16.5, seed: 72, red: 1 }, { k: 'poster', u0: 17.4, u1: 20, v0: 12, v1: 15.5, seed: 73 }, { k: 'poster', u0: 14, u1: 17.6, v0: 6.5, v1: 10.5, seed: 74 }] }
+  end: { z: 36, x0: -60, x1: 60, h: 60, mat: 'cement', seed: 71, lvl: 4.6, feat: [ // her own house: the green gate, the number, the demolition marks
+    { k: 'gate', u0: -5.5, u1: 5.5, v0: 0, v1: 18 }, { k: 'plate', u0: 7, u1: 9.4, v0: 13, v1: 14.8 }, { k: 'meter', u0: 10.5, u1: 12.5, v0: 11, v1: 14 },
+    { k: 'pipe', u0: -27, u1: -26, v0: 0, v1: 60 }, { k: 'cable', u0: -60, u1: 60, v0: 30, v1: 30.9 },
+    { k: 'spray', u0: -26.6, u1: -7, v0: 15.6, v1: 15.6 + 16 * 2 * 36 / 190, px: 2 * 36 / 190, text: '철거' },
+    { k: 'spray', u0: -26.6, u1: -7, v0: 8.6, v1: 8.6 + 16 * 2 * 36 / 190, px: 2 * 36 / 190, text: '예정' },
+    { k: 'xmark', u0: 13, u1: 19, v0: 15, v1: 21 }, { k: 'poster', u0: 20, u1: 23, v0: 8, v1: 12.5, seed: 74 }] }
 };
 S3SC.end.tex = (r, u, v, g, side, kind, ray) => wallTex(r, u, v, g, -1, kind, ray);
 const S3R = rayShot(S3SC);
@@ -329,11 +348,16 @@ function shotFace(t, lt) {
 }
 
 /* ---------- S7: the green gate, the room, the TV ---------- */
-const S7S = { f: 230, vx: 240, vy: 122, camY: 13, slope: 0, floorW: 40, ceil: 31, noTerrace: 1,
-  walls: { [-1]: [{ z0: 1, z1: 50, w: 22, h: 31, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, noCap: 1, seed: 701, noRoof: 1, feat: [{ k: 'poster', u0: 30, u1: 35, v0: 14, v1: 21, seed: 702 }, { k: 'win', u0: 12, u1: 20, v0: 13, v1: 22, bars: 1 }] }],
-           [1]: [{ z0: 1, z1: 50, w: 22, h: 31, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, noCap: 1, seed: 703, noRoof: 1, feat: [{ k: 'poster', u0: 22, u1: 27, v0: 13, v1: 20, seed: 704, red: 1 }, { k: 'sign', u0: 34, u1: 40, v0: 16, v1: 20 }] }] },
-  end: { z: 50, x0: -22, x1: 22, h: 31, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, seed: 705, feat: [
-    { k: 'poster', u0: -18, u1: -13, v0: 15, v1: 22, seed: 706 }, { k: 'poster', u0: -12.5, u1: -9, v0: 16, v1: 21, seed: 707, red: 1 }, { k: 'sign', u0: 13, u1: 18, v0: 15, v1: 22 }] },
+const S7S = { f: 230, vx: 240, vy: 120, camY: 12, slope: 0, floorW: 40, ceil: 25, noTerrace: 1,
+  walls: { [-1]: [
+      { z0: 1, z1: 42, w: 17, h: 25, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, noCap: 1, seed: 701, noRoof: 1, feat: [{ k: 'win', u0: 9, u1: 16, v0: 11, v1: 18, bars: 1 }, { k: 'poster', u0: 33, u1: 37, v0: 12, v1: 18, seed: 702 }] },
+      { z0: 20, z1: 29, w: 9.5, h: 6, rd: 7.5, mat: 'wood', seed: 720, feat: [], rfeat: [{ k: 'wood', u0: 9.5, u1: 17, v0: 0, v1: 6 }], tex(r, u, v, g, side, kind) { if (kind === 2) { FEAT.wood(r, u - 9.5, v, { u0: 9.5, u1: 17, v0: 0, v1: 6 }); return; } r.m = RM.wood; r.s = 2.0 + (vnoise(u * 0.5, v * 3, 8) - 0.5) * 0.6; }, roofTex(r, u, v) { r.m = RM.wood; r.s = 3.2 + (vnoise(u * 2, v * 0.3, 3) - 0.5) * 0.6; } }],
+    [1]: [
+      { z0: 1, z1: 42, w: 17, h: 25, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, noCap: 1, seed: 703, noRoof: 1, feat: [{ k: 'poster', u0: 30, u1: 34, v0: 12, v1: 17, seed: 704, red: 1 }] },
+      { z0: 19, z1: 28, w: 11.5, h: 21, rd: 5.5, mat: 'wood', seed: 721, feat: [], rfeat: [{ k: 'wood', u0: 11.5, u1: 17, v0: 0, v1: 21 }], roofTex(r) { r.m = RM.wood; r.s = 1.6; }, tex(r, u, v, g, side, kind) { if (kind === 2) { FEAT.wood(r, u - 11.5, v, { u0: 11.5, u1: 17, v0: 0, v1: 21 }); r.s -= 0.4; return; } r.m = RM.wood; r.s = 1.9 + (vnoise(u * 0.5, v * 3, 7) - 0.5) * 0.7 - (v < 1 ? 0.8 : 0); } },
+      { z0: 31, z1: 37, w: 12.5, h: 9, rd: 4.5, mat: 'teal', seed: 722, feat: [], rfeat: [{ k: 'quilts', u0: 12.5, u1: 17, v0: 0, v1: 9 }], roofTex(r, u, v) { r.m = RM.paper; r.s = 3.6; } }] },
+  end: { z: 42, x0: -17, x1: 17, h: 25, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, seed: 705, feat: [
+    { k: 'poster', u0: -14, u1: -10, v0: 13, v1: 19, seed: 706 }, { k: 'poster', u0: -9.5, u1: -6.5, v0: 14, v1: 18, seed: 707, red: 1 }] },
   floorTex(r, X, z) { r.m = RM.wood; r.s = 3.0 + (fbm(X * 0.08, z * 0.08, 711) - 0.5) * 1.2; if ((X + 100) % 6 < 0.18 || z % 6 < 0.18) r.s -= 1; },
   ceilTex(r, X, z) { r.m = RM.cement; r.s = 2.4 + (fbm(X * 0.1, z * 0.1, 713) - 0.5); if ((X + 100) % 10 < 0.2 || z % 10 < 0.2) r.s -= 0.8; }
 };
@@ -341,14 +365,14 @@ const S7S = { f: 230, vx: 240, vy: 122, camY: 13, slope: 0, floorW: 40, ceil: 31
 for (const g of [S7S.walls[-1][0], S7S.walls[1][0], S7S.end]) g.tex = (r, u, v, sg, side, kind, ray) => {
   wallTex(r, u, v, sg, sg === S7S.end ? -1 : side, kind, ray);
   if (r.m === RM.teal && (Math.abs(((u * 1.4) % 2) - 1) + Math.abs(((v * 1.4) % 2) - 1)) < 0.25) r.s += 0.7;
-  if (sg === S7S.end && u > -2 && u < 10 && v < 21) { // the doorway with its green iron gate
-    const e = Math.min(u + 2, 10 - u, 21 - v); r.m = RM.green; r.s = 2.6; if (e < 0.6) { r.m = RM.dark; r.s = 1; } else if (Math.abs(u - 4) < 0.25) { r.m = RM.dark; r.s = 1.2; } else if ((v > 2 && v < 9) || (v > 11 && v < 19)) r.s = 2.0;
+  if (sg === S7S.end && u > 0 && u < 10 && v < 19) { // the doorway with its green iron gate
+    const e = Math.min(u, 10 - u, 19 - v); r.m = RM.green; r.s = 2.6; if (e < 0.6) { r.m = RM.dark; r.s = 1; } else if (Math.abs(u - 4) < 0.25) { r.m = RM.dark; r.s = 1.2; } else if ((v > 2 && v < 9) || (v > 11 && v < 19)) r.s = 2.0;
   }
 };
 const S7R = rayShot(S7S);
-const S7_DOOR = { x0: -2, x1: 10, h: 21, z: 50 };
+const S7_DOOR = { x0: 0, x1: 10, h: 19, z: 42 };
 function s7Layout() { // TV box and screen from the room's geometry
-  const ray = S7R(), [x0, y0] = ray.project(-19, 13, 27), [x1, y1] = ray.project(-8, 4.5, 27);
+  const ray = S7R(), [x0, y0] = ray.project(-16.5, 14, 25), [x1, y1] = ray.project(-9.5, 6.3, 25);
   TV.x = ri(x0) + 5; TV.y = ri(y0) + 5; TV.w = ri(x1 - x0) - 22; TV.h = ri(y1 - y0) - 10;
   return [ri(x0), ri(y0), ri(x1 - x0), ri(y1 - y0)];
 }
@@ -357,20 +381,19 @@ function shotRoom(t, lt) {
   const open = t >= 67.3 && t < slam ? [2, 2, 1, 1][Math.min(3, Math.max(0, k))] : 0;
   const on = t >= 70.0, img = t >= 70.9, beat = t >= 74.2;
   const lights = [];
-  if (on) lights.push({ x: -13.5, y: 9, z: 25, r: beat ? 46 : 40, k: beat ? 3.6 : img ? 3.1 : 2.6, cone: false, air: 0.7, ar: 9 });
+  if (on) lights.push({ x: -13, y: 10, z: 24, r: beat ? 46 : 40, k: beat ? 3.6 : img ? 3.1 : 2.6, cone: false, air: 0.7, ar: 9 });
   ray.shadeK(fb, 'r' + lights.map(l => l.k + ',' + l.r).join(), lights, -2.4, null, () => K0);
   // the doorway: closed seams leak red; open shows the red alley and a swinging leaf
-  const [dx0, dy0] = ray.project(S7_DOOR.x0, S7_DOOR.h, 50), [dx1, dy1] = ray.project(S7_DOOR.x1, 0, 50);
+  const [dx0, dy0] = ray.project(S7_DOOR.x0, S7_DOOR.h, 42), [dx1, dy1] = ray.project(S7_DOOR.x1, 0, 42);
   if (open) {
     sky(fb, ri(dx0), ri(dy0), ri(dx1 - dx0), [[R2, 12], [R3, 10], [R1, 40]]); R(fb, ri(dx0), ri(dy1) - 8, ri(dx1 - dx0), 8, G0);
     const lw = (open === 2 ? 0.25 : 0.6) * (dx1 - dx0);
     poly(fb, [[dx0, dy0], [dx0 + lw, dy0 + 6], [dx0 + lw, dy1 - 4], [dx0, dy1]], M2); L(fb, dx0 + lw, dy0 + 6, dx0 + lw, dy1 - 4, M3);
-    for (let i = 0; i < W * H; i++) { const z = ray.z[i]; if (z > 1e8 || ray.nr[i] !== 0) continue; if (Math.abs(ray.px[i] - 4) < 5 + (50 - z) * 0.32 && z > 24) fb.d[i] = RED[fb.d[i]] === K0 ? R0 : RED[fb.d[i]]; }
+    for (let i = 0; i < W * H; i++) { const z = ray.z[i]; if (z > 1e8 || ray.nr[i] !== 0) continue; if (Math.abs(ray.px[i] - 5) < 5 + (42 - z) * 0.32 && z > 18) fb.d[i] = RED[fb.d[i]] === K0 ? R0 : RED[fb.d[i]]; }
   } else { R(fb, ri(dx0), ri(dy0) - 1, ri(dx1 - dx0), 1, R2); R(fb, ri(dx1), ri(dy0), 1, ri(dy1 - dy0), R3); R(fb, ri(dx0), ri(dy1), ri(dx1 - dx0), 1, R2); }
   // the dead bulb on its cord
-  { const [cx, cy] = ray.project(1, 31, 30), [ex, ey] = ray.project(1, 25, 30); L(fb, cx, cy, ex, ey, K1); ell(fb, ri(ex), ri(ey) + 2, 2, 3, on ? G1 : G0); }
-  // low cabinet + the CRT
-  { const ch = ri(bh * 0.55), cy0 = by + bh - 2; R(fb, bx - 6, cy0, bw + 12, ch, Y0); R(fb, bx - 6, cy0, bw + 12, 2, Y1); R(fb, bx + bw + 3, cy0, 3, ch, K1); R(fb, bx - 6, cy0 + ch - 2, bw + 12, 2, K1); R(fb, bx + (bw >> 1), cy0 + 3, 1, ch - 5, K1); P(fb, bx + (bw >> 1) - 3, cy0 + (ch >> 1), Y1); P(fb, bx + (bw >> 1) + 3, cy0 + (ch >> 1), Y1); D(fb, bx - 6, cy0 + 2, bw + 12, ch - 4, K1, 0.15); }
+  { const [cx, cy] = ray.project(1, 25, 30), [ex, ey] = ray.project(1, 20, 30); L(fb, cx, cy, ex, ey, K1); ell(fb, ri(ex), ri(ey) + 2, 2, 3, on ? G1 : G0); }
+  // the CRT on its low cabinet (the cabinet is room geometry)
   R(fb, bx, by, bw, bh, G1); R(fb, bx, by, bw, 2, G2); R(fb, bx + bw - 2, by, 2, bh, G0); R(fb, bx, by + bh - 2, bw, 2, K1);
   R(fb, TV.x - 3, TV.y - 3, TV.w + 6, TV.h + 6, K1);
   const kx = TV.x + TV.w + 5; R(fb, kx, TV.y + 4, 9, 9, G0); ellO(fb, kx + 4, TV.y + 8, 3, 3, G3); R(fb, kx, TV.y + 18, 9, 9, G0); ellO(fb, kx + 4, TV.y + 22, 3, 3, G3); for (let j = TV.y + 32; j < TV.y + TV.h; j += 2) R(fb, kx, j, 9, 1, G0);
@@ -387,12 +410,12 @@ function shotRoom(t, lt) {
     }
   }
   // her: silhouette in the doorway → back turned, pushing it shut → standing, not turning around
-  const gb = new Buf(W, H), dz = 36, [gx, gy] = ray.project(4, 0, dz), gs = 16 * S7S.f / dz / 47;
-  if (open && k <= 1) { const z2 = k <= 0 ? 47 : 41, [sx, sy] = ray.project(4, 0, z2); girlFront(gb, ri(sx), ri(sy), { s: 16 * S7S.f / z2 / 47 }); for (let i = 0; i < gb.d.length; i++) if (gb.d[i] !== T) gb.d[i] = K0; blit(fb, gb, 0, 0); }
+  const gb = new Buf(W, H), dz = 32, [gx, gy] = ray.project(5, 0, dz), gs = 16 * S7S.f / dz / 47;
+  if (open && k <= 1) { const z2 = k <= 0 ? 41 : 36, [sx, sy] = ray.project(5, 0, z2); girlFront(gb, ri(sx), ri(sy), { s: 16 * S7S.f / z2 / 47 }); for (let i = 0; i < gb.d.length; i++) if (gb.d[i] !== T) gb.d[i] = K0; blit(fb, gb, 0, 0); }
   else if (open || t >= slam) {
     const br = step(Math.max(0, t - slam), 1.6) % 2, sway = open ? 1.2 : [1, -0.6, 0.3, 0][Math.min(3, step(t - slam, 8))];
     girlBack(gb, ri(gx), ri(gy), { s: gs, breath: br, sway }); volumize(gb);
-    litSprite(fb, gb, open ? 0 : ray.light(lights, -2.2, 4, 10, dz) + 0.3);
+    litSprite(fb, gb, open ? 0 : ray.light(lights, -2.2, 5, 10, dz) + 0.3);
   }
   // the slam: two frames of shake, dust shaken loose
   if (t >= slam && t < slam + 0.17) { const sh = step(t - slam, 12) % 2 ? -2 : 2, c = fb.d.slice(); for (let y = 0; y < H; y++) { const sy = clamp(y + sh, 0, H - 1); fb.d.set(c.subarray(sy * W, sy * W + W), y * W); } }

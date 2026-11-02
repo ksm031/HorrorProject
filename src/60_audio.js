@@ -110,7 +110,8 @@ const SFX = {
 function buildSoundEvents() {
   const E = [], ev = (t, k, o = {}) => E.push({ t, k, o });
   // S1: walk home, cicadas, a dog far below
-  ev(3.4, 'bark', { n: 2, v: 0.8, pan: -0.6 }); ev(6.9, 'bark', { n: 1, v: 0.5, pan: 0.7 });
+  ev(3.4, 'bark', { n: 2, v: 0.8, pan: -0.6 });
+  for (let f = Math.ceil(5.2 * 7); f < 9 * 7; f++) if (f % 4 === 0) ev(f / 7, 'step', { v: 0.35 + (f / 7 - 5.2) * 0.12 }); // her steps come closer ev(6.9, 'bark', { n: 1, v: 0.5, pan: 0.7 });
   // S2: her steps fade as she walks away up the alley (8 fps cycle, contact every 4th frame)
   for (let f = 0; f < 15 * 8; f++) if (f % 4 === 0) { const t = 9 + f / 8, z = 48 + (t - 9) * 4.6; ev(t, 'step', { v: clamp(48 / z, 0.25, 1) }); }
   ev(12.2, 'bark', { n: 3, v: 0.6, pan: 0.8 });

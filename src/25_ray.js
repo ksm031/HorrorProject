@@ -88,7 +88,7 @@ class Ray {
       const X = dx * hz, Y = cy + dy * hz; TEX_CS = Math.pow(2, Math.round(Math.log2(Math.max(0.06, 2.4 * hz / sc.f))));
       if (kind === 0) (sc.floorTex || floorTex)(res, X, hz, this, sc);
       else if (kind === 4) (sc.ceilTex || ceilTex)(res, X, hz, this, sc);
-      else if (kind === 5) roofTex(res, U, V, seg);
+      else if (kind === 5) (seg.roofTex || roofTex)(res, U, V, seg);
       else (seg.tex || wallTex)(res, U, V, seg, side, kind, this);
       this.m[i] = res.m; this.s[i] = res.s; this.em[i] = res.e; this.z[i] = hz; this.px[i] = X; this.py[i] = Y;
       this.wet[i] = res.wet ? 1 : 0;
@@ -186,7 +186,7 @@ function wallTex(r, u, v, g, side, kind, ray) {
   const mh = fbm(u * 0.25, 3, seed + 2) * 5 - 1.8 + (hash(ri(u * 2), 0, seed) - 0.5) * 0.8; if (v < mh && mat !== 'brick') { m = RM.moss; s = 2.4 + (mh - v) * 0.3 + (hash(ri(u * 3), ri(v * 3), seed) - 0.5); }
   else if (v < 7 && vnoise(u * 0.9, v * 0.9, seed + 6) > 0.66) s -= 1.0;
   // red ivy (담쟁이) climbing the wall in clusters of leaves
-  if (g.ivy) {
+  if (g.ivy && (kind !== 1 || u > 26)) { // never right in front of the lens: up close it reads as a smear
     const reach = fbm(u * 0.09, v * 0.05, seed + 20) + (1 - v / Math.max(8, top)) * 0.35 - 0.2;
     if (reach > 0.5 && v > 0.5) { // leaf clusters: shaded as masses (lit from above), few dark gaps — not per-pixel noise
       const cs = TEX_CS * 2, cu = Math.floor(u / cs), cv = Math.floor(v / cs), cell = hash(cu, cv, seed + 21), mass = fbm(u * 0.35, v * 0.35, seed + 22);
@@ -239,6 +239,9 @@ const FEAT = {
   ac(r, u, v, f) { const w = f.u1 - f.u0, h = f.v1 - f.v0, cx = w * 0.38, cy = h * 0.5, d = Math.hypot(u - cx, v - cy); r.m = RM.cement; r.s = 5.4; if (d < h * 0.36) r.s = d > h * 0.3 ? 3 : 4 - ((Math.atan2(v - cy, u - cx) * 3 + 10) % 1 < 0.5 ? 1 : 0); if (v < 0.4) r.s = 3.5; },
   cable(r, u, v, f) { const k = Math.floor(v / 0.45); if (k % 3 !== 2) { r.m = RM.dark; r.s = 1.6 + (k % 3) * 0.6; } },
   sign(r, u, v, f) { const w = f.u1 - f.u0, h = f.v1 - f.v0, e = Math.min(u, w - u, v, h - v); r.m = RM.paper; r.s = e < 0.3 ? 2.5 : 5.2 - (fbm(u * 0.4, v * 0.4, 8) - 0.5) * 1.5; if (e > 0.3 && v > h * 0.55) { r.m = RM.red; r.s = 3.2; } },
+  xmark(r, u, v, f) { const w = f.u1 - f.u0, c = w / 2, d = Math.hypot(u - c, v - c); if (Math.abs(d - c * 0.85) < c * 0.12 || (d < c * 0.8 && (Math.abs((u - c) - (v - c)) < c * 0.12 || Math.abs((u - c) + (v - c)) < c * 0.12))) { r.m = RM.red; r.s = 3.2; } },
+  wood(r, u, v, f) { const w = f.u1 - f.u0, h = f.v1 - f.v0; r.m = RM.wood; r.s = 2.6 + (vnoise(u * 3, v * 0.4, 9) - 0.5) * 0.8; if (Math.abs(u - w / 2) < 0.15 || v < 0.4 || h - v < 0.5) r.s -= 1.2; if (Math.abs(Math.abs(u - w / 2) - 0.8) < 0.25 && Math.abs(v - h * 0.55) < 1.1) { r.m = RM.cement; r.s = 6; } },
+  quilts(r, u, v, f) { const band = Math.floor(v / 1.5), cols = [[RM.red, 2.6], [RM.paper, 4.4], [RM.teal, 3.6], [RM.paper, 3.8], [RM.green, 3.2], [RM.red, 2.2]]; const [m, l] = cols[band % cols.length]; r.m = m; r.s = l + (v % 1.5 < 0.25 ? -1 : 0) + (vnoise(u * 2, band, 4) - 0.5) * 0.6; },
   vent(r, u, v) { r.m = RM.dark; r.s = (v % 0.8 < 0.35) ? 3 : 1; }
 };
 function floorTex(r, X, z, ray, sc) {

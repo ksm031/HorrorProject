@@ -1,5 +1,6 @@
 /* timeline (seconds) */
-addShot(0, 9, shotOpen, 'S1 top of the hill');
+addShot(0, 5.2, shotOpen, 'S1 top of the hill');
+addShot(5.2, 9, shotOpenB, 'S1b she climbs toward us');
 addShot(9, 17.4, shotAlleyRayWide, 'S2a alley (behind her)');
 addShot(17.4, 20.4, shotAlleyMirror, 'S2b mirror');
 addShot(20.4, 24, shotAlleyRayWide, 'S2c alley (behind her)');
