@@ -94,6 +94,13 @@ const SFX = {
   slam: (w) => { nz(w, 0.3, { type: 'lowpass', f: 3200, f2: 300, v: 0.6, a: 0.002, verb: 1, room: true }); tone(w, 0.5, { f: 70, f2: 40, v: 0.6 }); for (const [f, d, v] of [[187, 1.3, 0.09], [433, 1.0, 0.06], [761, 0.8, 0.045], [1210, 0.6, 0.03], [1873, 0.4, 0.02]]) tone(w, d, { type: 'triangle', f, v, verb: 0.6, room: true }); },
   rustle: (w) => nz(w, 0.25, { f: 2600, q: 0.8, v: 0.02, a: 0.08 }),
   tvon: (w) => { nz(w, 0.03, { type: 'highpass', f: 4000, v: 0.15, room: true, verb: 0.4 }); tone(w, 0.5, { f: 60, f2: 50, v: 0.15 }); tone(w + 0.02, 0.4, { type: 'sawtooth', f: 15, f2: 120, v: 0.06, lp: 400 }); },
+  sting: (w) => { // the reveal: one hard, dissonant hit
+    tone(w, 0.9, { f: 58, f2: 26, v: 0.75, lp: 160 });
+    nz(w, 0.7, { type: 'lowpass', f: 5000, f2: 300, v: 0.45, a: 0.002, verb: 0.5 });
+    for (const f of [233, 247, 349, 370, 494, 523]) tone(w, 1.0, { type: 'sawtooth', f, f2: f * 0.86, v: 0.05, bp: 1400, q: 1.2, verb: 0.4 });
+    tone(w + 0.02, 0.8, { type: 'sawtooth', f: 1900, f2: 2700, v: 0.05, bp: 2400, q: 5, verb: 0.6 });
+  },
+  lunge: (w) => { nz(w, 0.4, { f: 400, f2: 2200, q: 0.8, v: 0.3, a: 0.15 }); tone(w + 0.3, 0.5, { f: 70, f2: 35, v: 0.5, lp: 160 }); },
   cut: (w) => { AU.master.gain.setValueAtTime(0, w); },
   uncut: (w) => { AU.master.gain.setValueAtTime(AU.muted ? 0 : 0.9, w); },
   heart: (w) => { for (const [d, v] of [[0, 0.9], [0.24, 0.6]]) { tone(w + d, 0.22, { f: 62, f2: 34, v, lp: 140 }); nz(w + d, 0.12, { type: 'lowpass', f: 220, v: v * 0.4 }); } }
@@ -104,26 +111,31 @@ function buildSoundEvents() {
   const E = [], ev = (t, k, o = {}) => E.push({ t, k, o });
   // S1: walk home, cicadas, a dog far below
   ev(3.4, 'bark', { n: 2, v: 0.8, pan: -0.6 }); ev(6.9, 'bark', { n: 1, v: 0.5, pan: 0.7 });
-  // S2: footsteps on contact frames (8 fps cycle, contacts every 4th frame)
-  for (let f = 0; f < 15 * 8; f++) if (f % 4 === 0) { const t = 9 + f / 8, gx = -30 + f * 3.4; ev(t, 'step', { pan: (gx - 240) / 300 }); }
+  // S2: her steps fade as she walks away up the alley (8 fps cycle, contact every 4th frame)
+  for (let f = 0; f < 15 * 8; f++) if (f % 4 === 0) { const t = 9 + f / 8, z = 48 + (t - 9) * 4.6; ev(t, 'step', { v: clamp(48 / z, 0.25, 1) }); }
   ev(12.2, 'bark', { n: 3, v: 0.6, pan: 0.8 });
   for (const [a, z] of S2_BLACK) {
-    for (let k = 0; k < 10; k++) { const t = a - 0.5 + k * 0.05; if (s2LampOn(t) !== s2LampOn(t - 0.05)) ev(t, 'click', { pan: -0.5 }); }
-    ev(a, 'relay'); ev(z, 'click', { v: 0.8, pan: -0.5 });
+    for (let k = 0; k < 10; k++) { const t = a - 0.5 + k * 0.05; if (s2LampOn(t) !== s2LampOn(t - 0.05)) ev(t, 'click', { pan: 0.4 }); }
+    ev(a, 'relay'); ev(z, 'click', { v: 0.8, pan: 0.4 });
   }
   for (const g of S2_GHOST) ev(g[0] - 0.05, 'swell', { d: 1.4 });
-  // S3: the stop, cloth as she turns
+  // S3: the stop, cloth as she turns, a held breath — then it is there
   ev(24.02, 'scuff', { pan: 0 }); for (const [a] of S3_TURN) ev(a, 'rustle');
   for (let t = 25; t < 30; t += 2.1) ev(t, 'breath', { in: true, v: 0.4, d: 0.8 });
-  // S4: running (12 fps, contacts every 4th frame), breathing, flaps, basin, lamps dying, ghost marks
+  ev(S3_REVEAL, 'sting'); ev(33.0, 'cut'); ev(33.42, 'uncut'); ev(33.44, 'breath', { in: true, v: 2.2, d: 0.35 });
+  // S4: running (12 fps, contact every 4th frame), breathing, flaps, the basin, lamps dying behind her, marks
   for (let f = 0; f < 15 * 12; f++) { const t = 33.5 + f / 12; if (f % 4 === 0) ev(t, 'step', { run: true }); if (f % 8 === 2) ev(t, 'breath', { in: f % 16 === 2, v: 1.2, d: 0.3 }); }
-  for (const ln of S4_LAUNDRY) { const t = 33.5 + ((ln.a + ln.z) / 2 - 120) / S4_SPEED; ev(t, 'flap', { pan: 0.1 }); ev(t + 0.25, 'flap', { pan: -0.2 }); }
-  ev(33.5 + (S4_BASIN - 126) / S4_SPEED, 'basin', { pan: 0.05 });
-  for (let i = 0; i < S4_LAMPS.length; i++) { const t = 33.5 + (S4_LAMPS[i] + 70 - 120) / S4_SPEED; if (t < 48.5) { ev(t, 'click', { pan: -0.6 }); ev(t + 0.35, 'pop', { pan: -0.7 }); } }
-  for (const g of S4_GHOST) ev(g[0], 'thud', { v: 0.5 });
+  const lampDeath = (t, pan) => { ev(t, 'click', { pan }); ev(t + 0.34, 'pop', { pan }); };
+  for (const l of S4A.lamps) { const t = s4aPass(l); if (t < 38) lampDeath(t, l.x > 0 ? 0.3 : -0.3); }
+  for (const lz of [48, 86]) { const t = S4A.a + (lz - S4A.z0) / S4A.v; if (t < 38) { ev(t - 0.1, 'flap', { pan: -0.2 }); ev(t + 0.12, 'flap', { pan: 0.2 }); } }
+  for (const l of S4B.lamps) { const t = s4bPass(l.z); if (t < 42.6) lampDeath(t, l.x > 0 ? 0.4 : -0.4); }
+  ev(s4bPass(S4B.basin.z - 6), 'basin', { pan: -0.3 });
+  for (const l of S4C.lamps) { const t = s4cPass(l.z); if (t < 48.5) lampDeath(t, l.x > 0 ? 0.4 : -0.4); }
+  for (const t of [35.9, 36.75, 40.4, 41.4, 44.6, 46.0]) ev(t, 'thud', { v: 0.5 });
+  ev(47.2, 'lunge');
   // S5: stairs (stone), heavy breath, the giant's stepped rise, wires snap
-  for (let f = 0; f < 11 * 12; f++) { const t = 48.5 + f / 12; if (f % 4 === 0) ev(t, 'step', { run: true, stone: true }); if (f % 8 === 3) ev(t, 'breath', { in: f % 16 === 3, v: 1.6, d: 0.3 }); }
-  for (let k = 0; k < 11; k++) ev(S5_RISE_T + k / 2.2, 'thud', { v: 0.35 + k * 0.05 });
+  for (let f = 0; f < 11 * 12; f++) { const t = 48.5 + f / 12; if (f % 4 === 0) ev(t, 'step', { run: true, stone: true, v: clamp(30 / (14 + (t - 48.5) * 6), 0.35, 1) }); if (f % 8 === 3) ev(t, 'breath', { in: f % 16 === 3, v: 1.4, d: 0.3 }); }
+  for (let k = 0; k < 13; k++) ev(S5_RISE_T + k / 2.2, 'thud', { v: 0.35 + k * 0.04 });
   for (const t of S5_SNAP) ev(t, 'snap');
   // S6a: run in, stop — then nothing at all
   for (let f = 0; f < 12; f += 4) ev(59.5 + f / 12, 'step', { run: true });
@@ -141,8 +153,9 @@ function layerGains(t) {
   if (t < 60.5) out.air = t < 24 ? 0.08 : t < 33.5 ? 0.04 : 0.07;
   if (t < 60.5) out.hum = t < 9 ? 0.02 : t < 24 ? 0.035 : t < 33.5 ? 0.07 : t < 48.5 ? 0.03 : 0.05;
   if (t >= 9 && t < 24) out.buzz = s2LampOn(t) ? 0.022 : 0;
-  if (t >= 33.5 && t < 48.5) { let n = 0; for (let i = 0; i < S4_LAMPS.length; i++) if (s4LampState(i, t)) n++; out.buzz = n ? 0.012 : 0; }
-  if (t >= 15.6 && t < 60.5) out.drone = t < 24 ? 0.06 : t < 33.5 ? 0.1 : t < 48.5 ? 0.08 : 0.08 + clamp((t - 50) / 9, 0, 1) * 0.16;
+  if (t >= 33.5 && t < 48.5) { const on = t < 38 ? S4A.lamps.some(l => lampLife(s4aPass(l), t)) : t < 42.6 ? S4B.lamps.some(l => lampLife(s4bPass(l.z), t)) : S4C.lamps.some(l => lampLife(s4cPass(l.z), t)); out.buzz = on ? 0.012 : 0; }
+  if (t >= 31.9 && t < 33.5) { out.hum = 0; out.air = 0; out.drone = 0; out.buzz = 0; }
+  if (t >= 15.6 && t < 60.5 && !(t >= 31.9 && t < 33.5)) out.drone = t < 24 ? 0.06 : t < 33.5 ? 0.1 : t < 48.5 ? 0.08 : 0.08 + clamp((t - 50) / 9, 0, 1) * 0.16;
   if (t >= 70.12 && t < 74.6) { out.stat = t < 70.9 ? 0.09 : 0.022; out.whine = 0.006; }
   return out;
 }
@@ -164,7 +177,7 @@ function auSeek(t) {
   if (!AU.ctx) return;
   for (const n of AU.active) { try { n.stop(); } catch (e) { } } AU.active.clear();
   for (const n in AU.layers) { const g = AU.layers[n].gain; g.cancelScheduledValues(0); g.setValueAtTime(0, AU.ctx.currentTime); }
-  const silentAt = (t >= 60.56 && t < 68.19) || t >= 74.6;
+  const silentAt = (t >= 60.56 && t < 68.19) || (t >= 33.0 && t < 33.42) || t >= 74.6;
   AU.master.gain.cancelScheduledValues(0); AU.master.gain.setValueAtTime(silentAt || AU.muted ? 0 : 0.9, AU.ctx.currentTime);
   AU.t0 = AU.ctx.currentTime - t; AU.cursor = 0; while (AU.cursor < AU.events.length && AU.events[AU.cursor].t < t) AU.cursor++;
 }

@@ -281,3 +281,32 @@ function volumize(b, strength = 1) {
   for (let y = 0; y + 1 < b.h; y++) for (let x = 0; x < w; x++) { const c = d[y * w + x], u = y > 0 ? d[(y - 1) * w + x] : T; if (c !== T && !EMISSIVE[c] && u === T && c !== HAIR) out[y * w + x] = UP[out[y * w + x]]; }
   d.set(out);
 }
+
+/* ---- front view (only ever small / far: walking home toward the camera, face in shadow) ---- */
+function girlFront(b, cx, fy, o) {
+  const s = o.s, X = u => cx + u * s, Y = u => fy + u * s;
+  const pg = (pts, c) => poly(b, pts.map(q => [X(q[0]), Y(q[1])]), c);
+  const lift = o.lift || [0, 0];
+  for (let i = -6; i <= 6; i++) R(b, ri(X(i)), ri(Y(0.3)), Math.max(1, ri(s)), Math.max(1, ri(s * 0.6)), K0);
+  for (const side of [-1, 1]) {
+    const l = lift[side < 0 ? 0 : 1], lx = side * 2.3, fb2 = -l * 1.6;
+    pg([[lx - 1.3, -13], [lx + 1.3, -13], [lx + 1.0, fb2 - 1.2], [lx - 1.0, fb2 - 1.2]], side > 0 ? SKIND : SKIN);
+    pg([[lx - 1.1, -6.5], [lx + 1.1, -6.5], [lx + 1.0, fb2 - 1], [lx - 1.0, fb2 - 1]], SOCK);
+    pg([[lx - 1.3, fb2 - 1.3], [lx + 1.3, fb2 - 1.3], [lx + 1.4, fb2 + 0.2], [lx - 1.4, fb2 + 0.2]], SHOE);
+  }
+  pg([[-4.6, -25.6], [4.6, -25.6], [6.4, -12.4], [-6.4, -12.4]], SKIRT);
+  for (let i = -5; i <= 5; i += 2) L(b, X(i * 0.7), Y(-24.8), X(i * 1.0), Y(-12.8), SKIRTD);
+  for (const side of [-1, 1]) { const ax = side * 5.0, ay = (o.arm || 0) * side * 0.6; pg([[ax - 0.9, -32], [ax + 0.9, -32], [ax + side * 0.6 + 0.9, -21 + ay], [ax + side * 0.6 - 0.9, -21 + ay]], side > 0 ? SKIND : SKIN); }
+  pg([[-5.2, -35], [5.2, -35], [5.6, -31], [4.7, -25.2], [-4.7, -25.2], [-5.6, -31]], SHIRT);
+  pg([[2.4, -34], [5.2, -35], [5.6, -31], [4.7, -25.2], [2.6, -25.2]], SHIRTS);
+  for (const side of [-1, 1]) pg([[side * 4.6, -35], [side * 6.4, -33.4], [side * 6.6, -30.4], [side * 4.8, -30.6]], side > 0 ? SHIRTS : SHIRT);
+  for (const side of [-1, 1]) pg([[side * 3.2, -35], [side * 4.2, -35], [side * 3.9, -27], [side * 2.9, -27]], PACKD); // straps
+  pg([[-0.9, -34.2], [0.9, -34.2], [0.6, -31.6], [-0.6, -31.6]], R3); // ribbon
+  pg([[-2.2, -35.4], [0, -34], [2.2, -35.4], [2, -34.4], [0, -33.4], [-2, -34.4]], SHIRT);
+  // head: face (in shadow under the bangs), hair framing it
+  const hb = [[-3.9, -37.4], [-4.6, -39], [-4.6, -41.4], [-4.2, -43.8], [-3.2, -45.6], [-1.6, -46.6], [1.6, -46.6], [3.2, -45.6], [4.2, -43.8], [4.6, -41.4], [4.6, -39], [3.9, -37.4]];
+  pg(hb, HAIR);
+  pg([[-2.6, -42.2], [2.6, -42.2], [2.6, -39], [1.4, -37.2], [-1.4, -37.2], [-2.6, -39]], SKIND);
+  pg([[-2.6, -42.4], [2.6, -42.4], [2.6, -41.2], [-2.6, -41.2]], HAIR); // bangs
+  pg([[-3.0, -44.6], [-0.8, -45.6], [1.2, -45.4], [-0.6, -44.6]], HAIRH);
+}

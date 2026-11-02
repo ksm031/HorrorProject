@@ -15,7 +15,7 @@ const RAMPS = [
   /*6 glass */[K0, K1, T0, T1, T2, T3],
   /*7 paper */[K1, T0, G1, G2, G3, G4, G5, WH],
   /*8 blue  */[K0, K1, T0, B0, B1, T5],
-  /*9 wood  */[K0, K1, R0, Y0, Y1],
+  /*9 wood  */[K0, K1, Y0, Y0, Y1],
   /*10 ground*/[K0, K1, T0, G0, G1, G2, G3, G4],
   /*11 dark */[K0, K0, K1, T0, T1],
   /*12 sky  */[K0, K1, T0, T1, T2, T3, T4, T5],
@@ -39,7 +39,8 @@ class Ray {
       const i = sy * W + sx, dx = (sx - vx) / f, dy = (vy - sy) / f;
       let hz = 1e9, kind = -1, seg = null, side = 0, U = 0, V = 0;
       // floor (sloped plane)
-      const den = sc.slope - dy; if (den > 1e-5) { const z = cy / den; if (z > 0.3 && z < hz) { hz = z; kind = 0; } }
+      const den = sc.slope - dy; if (den > 1e-5) { const z = cy / den; if (z > 0.3 && z < hz && (!sc.floorZ || z < sc.floorZ)) { hz = z; kind = 0; } }
+      if (sc.ceil !== undefined && dy > 1e-5) { const z = (sc.ceil - cy) / dy; if (z > 0.3 && z < hz) { hz = z; kind = 4; } }
       // side walls (several layers, each with its own depth range and height)
       for (const sd of [-1, 1]) {
         if (dx * sd <= 0) continue; const list = sc.walls[sd];
@@ -48,6 +49,14 @@ class Ray {
           const y = cy + dy * z, base = g.base !== undefined ? g.base : this.ground(z), top = g.top !== undefined ? g.top : this.ground(g.z0) + g.h;
           if (y < base - 0.5 || y > top) continue;
           hz = z; kind = 1; seg = g; side = sd; U = z; V = y - base;
+        }
+        // roofs (seen from above): flat plane at the wall top, reaching back from the facade
+        if (dy < 0) for (let k = 0; k < list.length; k++) {
+          const g = list[k]; if (g.noRoof) continue;
+          const top = g.top !== undefined ? g.top : this.ground(g.z0) + g.h, z = (top - cy) / dy;
+          if (z <= 0.3 || z >= hz || z < g.z0 || z >= g.z1) continue;
+          const X = dx * z * sd; if (X < g.w || X > g.w + (g.rd || 34)) continue;
+          hz = z; kind = 5; seg = g; side = sd; U = z; V = X - g.w;
         }
         // returns: faces toward the camera where a wall steps in or out
         for (let k = 0; k < list.length; k++) {
@@ -67,14 +76,16 @@ class Ray {
       res.m = 0; res.s = 4; res.e = T;
       const X = dx * hz, Y = cy + dy * hz;
       if (kind === 0) (sc.floorTex || floorTex)(res, X, hz, this, sc);
+      else if (kind === 4) (sc.ceilTex || ceilTex)(res, X, hz, this, sc);
+      else if (kind === 5) roofTex(res, U, V, seg);
       else (seg.tex || wallTex)(res, U, V, seg, side, kind, this);
       this.m[i] = res.m; this.s[i] = res.s; this.em[i] = res.e; this.z[i] = hz; this.px[i] = X; this.py[i] = Y;
-      this.nr[i] = kind === 0 ? 0 : kind === 1 ? (side < 0 ? 1 : 2) : 3;
+      this.nr[i] = kind === 0 || kind === 5 ? 0 : kind === 4 ? 4 : kind === 1 ? (side < 0 ? 1 : 2) : 3;
     }
   }
   // per-frame: lights [{x,y,z,r,k}], fog {z0,z1,ramp,lvl}, amb
   shade(out, lights, amb, fog, skyFn) {
-    const NX = [0, 1, -1, 0], NY = [1, 0, 0, 0], NZ = [0, 0, 0, -1];
+    const NX = [0, 1, -1, 0, 0], NY = [1, 0, 0, 0, -1], NZ = [0, 0, 0, -1, 0];
     for (let i = 0; i < W * H; i++) {
       const x = i % W, y = (i / W) | 0, bq = bay(x, y);
       if (this.sky[i]) { out.d[i] = skyFn(x, y); continue; }
@@ -107,13 +118,13 @@ function streakAt(u, v, top, seed) { // rain streaks hanging from a wall top
   const c = Math.floor(u * 1.6), h = hash(c, 7, seed); if (h > 0.3) return 0;
   const len = 6 + hash(c, 9, seed) * 22, d = top - v; return d > 0 && d < len ? (1 - d / len) * (0.6 + h) : 0;
 }
-function crackAt(u, v, seed) { const n = vnoise(u * 0.35, v * 0.22, seed); return Math.abs(n - 0.5) < 0.012 && vnoise(u * 0.1, v * 0.1, seed + 1) > 0.55; }
+function crackAt(u, v, seed) { const n = vnoise(u * 0.35, v * 0.22, seed); return Math.abs(n - 0.5) < 0.007 && vnoise(u * 0.1, v * 0.1, seed + 1) > 0.6; }
 function wallTex(r, u, v, g, side, kind, ray) {
   const seed = g.seed || 1, top = (g.top !== undefined ? g.top : ray.ground(g.z0) + g.h) - (g.base !== undefined ? g.base : ray.ground(kind === 2 ? g.z0 : u));
   const mat = g.mat || 'cement';
   let m = RM[mat === 'block' ? 'cement' : mat], s = g.lvl || 4.4;
-  s += (fbm(u * 0.07, v * 0.09, seed) - 0.5) * 1.9;            // large blotches
-  if (mat === 'teal') { const p = fbm(u * 0.16 + 9, v * 0.2, seed + 4); if (p > 0.66) { m = RM.cement; s = 4.2 + (p - 0.66) * 3; } }
+  s += (fbm(u * 0.07, v * 0.09, seed) - 0.5) * (g.blot !== undefined ? g.blot : 1.9); // large blotches
+  if (mat === 'teal' && !g.noPeel) { const p = fbm(u * 0.16 + 9, v * 0.2, seed + 4); if (p > 0.66) { m = RM.cement; s = 4.2 + (p - 0.66) * 3; } }
   if (mat === 'block') { const row = Math.floor(v / 2), bu = u + (row & 1) * 2; if (v % 2 < 0.22 || bu % 4 < 0.18) s -= 1.4; else s += (hash(Math.floor(bu / 4), row, seed) - 0.5) * 0.7; }
   if (mat === 'brick') { const row = Math.floor(v / 0.75), bu = u + (row & 1) * 1.1; if (v % 0.75 < 0.16 || bu % 2.2 < 0.16) { m = RM.cement; s = 2.4; } else s = 3.3 + (hash(Math.floor(bu / 2.2), row, seed) - 0.5) * 1.6 + (fbm(u * 0.1, v * 0.1, seed) - 0.5); }
   s -= streakAt(u, v, top, seed) * 1.3;
@@ -121,7 +132,7 @@ function wallTex(r, u, v, g, side, kind, ray) {
   if (top - v < 1.0) s += 1.2; else if (top - v < 1.6) s -= 1.2; // coping + its shadow
   if (crackAt(u, v, seed)) s -= 2.2;
   // moss creeping up from the gutter
-  const mh = fbm(u * 0.25, 3, seed + 2) * 7 - 1.5; if (v < mh && mat !== 'brick') { m = RM.moss; s = 2.4 + (mh - v) * 0.3 + (hash(ri(u * 3), ri(v * 3), seed) - 0.5); }
+  const mh = fbm(u * 0.25, 3, seed + 2) * 5 - 1.8 + (hash(ri(u * 2), 0, seed) - 0.5) * 0.8; if (v < mh && mat !== 'brick') { m = RM.moss; s = 2.4 + (mh - v) * 0.3 + (hash(ri(u * 3), ri(v * 3), seed) - 0.5); }
   r.m = m; r.s = s;
   const fl = kind === 2 ? g.rfeat : g.feat;
   if (fl) for (const ft of fl) if (u >= ft.u0 && u < ft.u1 && v >= ft.v0 && v < ft.v1) FEAT[ft.k](r, u - ft.u0, v - ft.v0, ft, kind === 2 ? -side : side || -1);
@@ -180,6 +191,22 @@ function floorTex(r, X, z, ray, sc) {
   const pd = fbm(X * 0.12 + 40, z * 0.08, seed + 5); if (pd > 0.66 && Math.abs(X) < w - 2) { r.m = RM.glass; r.s = pd > 0.675 ? 2.4 : 3.6; r.wet = 1; } // puddles (bright lip)
   if (sc.stepD) { const ph = (z % sc.stepD) / sc.stepD; if (ph < 0.12) r.s += 1.6; else if (ph < 0.3) r.s -= 1.2; }
 }
+function roofTex(r, u, v, g) {
+  const sd = g.seed || 1, kind = hash(sd, 3, 9);
+  if (v < 0.7) { r.m = RM.cement; r.s = 5.4; return; } // parapet edge catches the light
+  if (kind < 0.45) { // corrugated slate, weighted with tyres
+    r.m = RM.cement; r.s = 3.6 + ((v * 1.7) % 1 < 0.45 ? 0.9 : -0.3) + (fbm(u * 0.1, v * 0.1, sd) - 0.5) * 1.6;
+    if (fbm(u * 0.2, v * 0.2, sd + 1) > 0.66) { r.m = RM.moss; r.s = 2.8; }
+    for (let k = 0; k < 3; k++) { const tu = g.z0 + 4 + hash(sd, k, 1) * (g.z1 - g.z0 - 8), tv = 4 + hash(sd, k, 2) * 20, d = Math.hypot(u - tu, (v - tv) * 1.2); if (d < 1.6 && d > 0.7) { r.m = RM.dark; r.s = 1.2; } }
+  } else { // flat roof, green waterproof paint, a blue tank, a red basin, styrofoam gardens
+    r.m = RM.green; r.s = 2.8 + (fbm(u * 0.08, v * 0.08, sd) - 0.5) * 1.6; if ((u % 9) < 0.2 || (v % 9) < 0.2) r.s -= 0.8;
+    const tu = g.z0 + 3 + hash(sd, 5, 1) * (g.z1 - g.z0 - 6), tv = 6 + hash(sd, 6, 1) * 14;
+    const d = Math.hypot(u - tu, v - tv); if (d < 2.6) { r.m = RM.blue; r.s = d < 1.8 ? 4.2 - d * 0.4 : 2.2; return; }
+    const bu = tu + 5, bv = tv + 3, d2 = Math.hypot(u - bu, v - bv); if (d2 < 1.6) { r.m = RM.red; r.s = d2 < 1.0 ? 1.6 : 3.6; return; }
+    if (Math.abs(u - tu + 4) < 1.6 && Math.abs(v - tv - 4) < 1.1) { r.m = RM.paper; r.s = 6; if (hash(ri(u * 3), ri(v * 3), 2) < 0.35) { r.m = RM.moss; r.s = 4; } }
+  }
+}
+function ceilTex(r, X, z) { r.m = RM.cement; r.s = 2.6 + (fbm(X * 0.1, z * 0.1, 77) - 0.5) * 1.2 - (z % 12 < 0.3 ? 1 : 0); }
 // wire in 3D, sagging, projected
 function wire3(b, ray, a, c, sag, col = K0) {
   let p = null;

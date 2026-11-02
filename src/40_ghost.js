@@ -36,7 +36,9 @@ function drawGhost(b, x, y, s, pose, o = {}) {
   // torso: narrow, ribbed slightly, sloped shoulders
   const nx = -Math.cos(lean * D2R) * f, ny = -Math.sin(lean * D2R);
   const w1 = 4.4 * s, w2 = 2.6 * s;
-  poly(b, [[sx + nx * w1, sy + ny * w1], [sx - nx * w1, sy - ny * w1], [hx - nx * w2, hy - ny * w2], [hx + nx * w2, hy + ny * w2]], dark);
+  { const prof = [[0, 0.62], [0.18, 1.0], [0.42, 0.86], [0.66, 0.5], [0.85, 0.56], [1, 0.62]], L1 = [], R1 = [];
+    for (const [tt, wk] of prof) { const px = lerp(sx, hx, tt), py = lerp(sy, hy, tt), ww = w1 * wk; L1.push([px + nx * ww, py + ny * ww]); R1.push([px - nx * ww, py - ny * ww]); }
+    poly(b, L1.concat(R1.reverse()), dark); }
   if (s >= 1.2) for (let i = 1; i < 5; i++) { const t = i / 5.5, px = lerp(sx, hx, t), py = lerp(sy, hy, t); L(b, px - nx * w2 * 0.8, py - ny * w2 * 0.8, px + nx * w2 * 0.2, py + ny * w2 * 0.2, rim); }
   // arms: upper 26, fore 26, hand+fingers 9 → reach past the knees
   for (const [side, arm] of [[1, p.la], [-1, p.ra]]) {
