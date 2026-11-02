@@ -54,7 +54,7 @@ function auInit(offline) {
   const st = src(), sbp = ctx.createBiquadFilter(); sbp.type = 'highpass'; sbp.frequency.value = 900; st.connect(sbp);
   L.stat = mk(sbp, 0, 0.1);
   const wh = ctx.createOscillator(); wh.frequency.value = 7800; wh.start(); L.whine = mk(wh, 0);
-  AU.events = buildSoundEvents();
+  AU.events = buildSoundEvents().map(e => ({ ...e, ft: storyToFilm(e.t) })).sort((a, b) => a.ft - b.ft);
 }
 
 /* ---- one-shot voices ---- */
@@ -167,12 +167,12 @@ function auNow() { return AU.ctx ? AU.ctx.currentTime - AU.t0 : 0; }
 function auSchedule() {
   if (!AU.ctx || AU.ctx.state !== 'running') return;
   const now = auNow(), ahead = now + 0.25, base = AU.t0;
-  while (AU.cursor < AU.events.length && AU.events[AU.cursor].t < ahead) {
-    const e = AU.events[AU.cursor++]; if (e.t >= now - 0.03) SFX[e.k](Math.max(AU.ctx.currentTime, base + e.t), e.o);
+  while (AU.cursor < AU.events.length && AU.events[AU.cursor].ft < ahead) {
+    const e = AU.events[AU.cursor++]; if (e.ft >= now - 0.03) SFX[e.k](Math.max(AU.ctx.currentTime, base + e.ft), e.o);
   }
   // layers: sample the score at small steps across the lookahead window
   for (let k = 0; k <= 4; k++) {
-    const tt = now + k * 0.05, g = layerGains(tt), when = Math.max(AU.ctx.currentTime, base + tt);
+    const tt = now + k * 0.05, g = layerGains(filmToStory(tt)), when = Math.max(AU.ctx.currentTime, base + tt);
     for (const n in g) AU.layers[n].gain.setTargetAtTime(AU.muted ? 0 : g[n], when, 0.012);
   }
 }
@@ -180,16 +180,16 @@ function auSeek(t) {
   if (!AU.ctx) return;
   for (const n of AU.active) { try { n.stop(); } catch (e) { } } AU.active.clear();
   for (const n in AU.layers) { const g = AU.layers[n].gain; g.cancelScheduledValues(0); g.setValueAtTime(0, AU.ctx.currentTime); }
-  const silentAt = (t >= 60.56 && t < 68.19) || (t >= 33.0 && t < 33.42) || t >= 74.6;
+  const ts = filmToStory(t), silentAt = (ts >= 60.56 && ts < 68.19) || (ts >= 33.0 && ts < 33.42) || ts >= 74.6;
   AU.master.gain.cancelScheduledValues(0); AU.master.gain.setValueAtTime(silentAt || AU.muted ? 0 : 0.9, AU.ctx.currentTime);
-  AU.t0 = AU.ctx.currentTime - t; AU.cursor = 0; while (AU.cursor < AU.events.length && AU.events[AU.cursor].t < t) AU.cursor++;
+  AU.t0 = AU.ctx.currentTime - t; AU.cursor = 0; while (AU.cursor < AU.events.length && AU.events[AU.cursor].ft < t) AU.cursor++;
 }
 
 // offline render of the whole score (verification only: levels, silences, clipping)
 async function auOffline(sr = 22050) {
   const ctx = new OfflineAudioContext(2, sr * DURATION, sr); auInit(ctx); AU.t0 = 0;
-  for (const e of AU.events) SFX[e.k](e.t, e.o);
-  for (let t = 0; t < DURATION; t += 0.05) { const g = layerGains(t); for (const n in g) AU.layers[n].gain.setValueAtTime(g[n], t); }
+  for (const e of AU.events) SFX[e.k](e.ft, e.o);
+  for (let t = 0; t < DURATION; t += 0.05) { const g = layerGains(filmToStory(t)); for (const n in g) AU.layers[n].gain.setValueAtTime(g[n], t); }
   const buf = await ctx.startRendering(), L = buf.getChannelData(0), Rr = buf.getChannelData(1), out = [];
   for (let s = 0; s < DURATION; s += 0.5) { let pk = 0, ss = 0, n = 0; for (let i = Math.floor(s * sr); i < Math.min(L.length, Math.floor((s + 0.5) * sr)); i++) { const v = Math.max(Math.abs(L[i]), Math.abs(Rr[i])); pk = Math.max(pk, v); ss += L[i] * L[i]; n++; } out.push([s, pk, Math.sqrt(ss / Math.max(1, n))]); }
   return out;
