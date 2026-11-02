@@ -6,7 +6,7 @@ const FOG_DUSK = { z0: 60, z1: 240, ramp: RM.sky, lvl: 3, max: 0.85 };
 function rayShot(sc) { return once(() => new Ray(sc)); }
 
 /* ---------- S1: from the top of the hill, looking down the alley at the city ---------- */
-const S1SC = { f: 290, vx: 240, vy: 64, camY: 30, slope: -0.13, floorW: 11, floorZ: 172, walls: alleyKit(101, { z0: 6, z1: 176, w: 11, litP: 0.12, spray: ['공가'], gapP: 0.2, ivyP: 0.15, treeP: 0.2, mats: ['teal', 'cement', 'teal', 'brick', 'cement', 'teal'] }) };
+const S1SC = { f: 290, vx: 240, vy: 64, camY: 30, slope: -0.13, floorW: 11, floorZ: 172, walls: alleyKit(101, { z0: 6, z1: 176, w: 11, litP: 0.12, spray: ['공가'], gapP: 0.2, ivyP: 0.15, treeP: 0.35, firstKind: 'wall', mats: ['teal', 'cement', 'teal', 'brick', 'cement', 'teal'] }) };
 const S1R = rayShot(S1SC);
 const S1Back = once(() => { // beyond the hill: dusk, mountains, the living city below
   const b = new Buf(W, H, T1);
@@ -42,7 +42,7 @@ function shotOpen(t, lt) {
 
 /* ---------- S3: she stops at a wall — two shadows; she turns; it is there ---------- */
 const S3SC = {
-  f: 210, vx: 240, vy: 150, camY: 15, slope: 0, floorW: 40, walls: { [-1]: [], [1]: [] },
+  f: 210, vx: 240, vy: 150, camY: 15, slope: 0, floorW: 40, noTerrace: 1, walls: { [-1]: [], [1]: [] },
   end: { z: 36, x0: -60, x1: 60, h: 60, mat: 'cement', seed: 71, lvl: 4.6, feat: [
     { k: 'pipe', u0: -27, u1: -26, v0: 0, v1: 60 }, { k: 'meter', u0: -25, u1: -23, v0: 13, v1: 16 }, { k: 'cable', u0: -60, u1: 60, v0: 30, v1: 30.9 },
     { k: 'spray', u0: -24, u1: -1, v0: 16, v1: 21.4, px: 0.34, text: '출입금지' },
@@ -316,9 +316,9 @@ function shotFace(t, lt) {
 }
 
 /* ---------- S7: the green gate, the room, the TV ---------- */
-const S7S = { f: 230, vx: 240, vy: 122, camY: 13, slope: 0, floorW: 40, ceil: 31,
-  walls: { [-1]: [{ z0: 1, z1: 50, w: 22, h: 31, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, seed: 701, noRoof: 1, feat: [{ k: 'poster', u0: 30, u1: 35, v0: 14, v1: 21, seed: 702 }, { k: 'win', u0: 12, u1: 20, v0: 13, v1: 22, bars: 1 }] }],
-           [1]: [{ z0: 1, z1: 50, w: 22, h: 31, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, seed: 703, noRoof: 1, feat: [{ k: 'poster', u0: 22, u1: 27, v0: 13, v1: 20, seed: 704, red: 1 }, { k: 'sign', u0: 34, u1: 40, v0: 16, v1: 20 }] }] },
+const S7S = { f: 230, vx: 240, vy: 122, camY: 13, slope: 0, floorW: 40, ceil: 31, noTerrace: 1,
+  walls: { [-1]: [{ z0: 1, z1: 50, w: 22, h: 31, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, noCap: 1, seed: 701, noRoof: 1, feat: [{ k: 'poster', u0: 30, u1: 35, v0: 14, v1: 21, seed: 702 }, { k: 'win', u0: 12, u1: 20, v0: 13, v1: 22, bars: 1 }] }],
+           [1]: [{ z0: 1, z1: 50, w: 22, h: 31, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, noCap: 1, seed: 703, noRoof: 1, feat: [{ k: 'poster', u0: 22, u1: 27, v0: 13, v1: 20, seed: 704, red: 1 }, { k: 'sign', u0: 34, u1: 40, v0: 16, v1: 20 }] }] },
   end: { z: 50, x0: -22, x1: 22, h: 31, mat: 'teal', lvl: 3.4, blot: 0.7, noPeel: 1, seed: 705, feat: [
     { k: 'poster', u0: -18, u1: -13, v0: 15, v1: 22, seed: 706 }, { k: 'poster', u0: -12.5, u1: -9, v0: 16, v1: 21, seed: 707, red: 1 }, { k: 'sign', u0: 13, u1: 18, v0: 15, v1: 22 }] },
   floorTex(r, X, z) { r.m = RM.wood; r.s = 3.0 + (fbm(X * 0.08, z * 0.08, 711) - 0.5) * 1.2; if ((X + 100) % 6 < 0.18 || z % 6 < 0.18) r.s -= 1; },

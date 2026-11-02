@@ -57,9 +57,17 @@ class Ray {
           const g = list[k]; if (g.noRoof) continue;
           const top = g.top !== undefined ? g.top : this.ground(g.z0) + g.h, z = (top - cy) / dy;
           if (z <= 0.3 || z >= hz || z < g.z0 || z >= g.z1) continue;
-          const X = dx * z * sd; if (X < g.w || X > g.w + (g.rd || 34)) continue;
+          const X = dx * z * sd; if (X < g.w || X > g.w + (g.rd !== undefined ? g.rd : 34)) continue;
           if (g.cut) continue;
           hz = z; kind = 5; seg = g; side = sd; U = z; V = X - g.w;
+        }
+        // end caps: every house is a box — its side face toward the camera, as deep as the house
+        for (let k = 0; k < list.length; k++) {
+          const g = list[k]; if (g.noCap) continue; const z = g.z0; if (z >= hz || z < 0.3) continue;
+          const X = dx * z * sd, dep = g.rd !== undefined ? g.rd : 34; if (X < g.w || X > g.w + dep) continue;
+          const y = cy + dy * z, base = g.base !== undefined ? g.base : this.ground(z), top = g.top !== undefined ? g.top : this.ground(g.z0) + g.h;
+          if (y < base || y > top) continue;
+          hz = z; kind = 2; seg = g; side = sd; U = X; V = y - base;
         }
         // returns: faces toward the camera where a wall steps in or out
         for (let k = 0; k < list.length; k++) {
@@ -229,6 +237,7 @@ const FEAT = {
 };
 function floorTex(r, X, z, ray, sc) {
   const w = sc.floorW || 12, seed = 31;
+  if (!sc.noTerrace && Math.abs(X) > w + 8) { const cz = Math.floor(z / 18); roofTex(r, z, Math.abs(X) - w - 8, { seed: cz * 7 + (X > 0 ? 1 : 2), z0: cz * 18, z1: cz * 18 + 18 }); r.s -= 0.8; return; }
   r.m = RM.ground; r.s = 4.1 + (fbm(X * 0.09, z * 0.06, seed) - 0.5) * 1.6;
   if (z % 14 < 0.35) r.s -= 1.4;                                    // expansion joints
   if (Math.abs(X) > w - 1.6) { r.s -= 1.2 + (Math.abs(X) - (w - 1.6)) * 0.5; if (Math.abs(X) > w - 1.2 && (z * 2) % 1 < 0.3) r.s -= 1; } // gutter

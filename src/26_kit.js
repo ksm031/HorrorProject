@@ -13,12 +13,12 @@ function alleyKit(seed, o = {}) {
       const seg = { z0: z, z1, w, seed: sg, feat: [] };
       if (w < prevW) { seg.ret = prevW; if (sprays.length && r() < 0.75) { const t = sprays.shift(), px = 0.32; seg.rfeat = [{ k: 'spray', u0: w + 0.4, u1: w + 0.4 + t.length * 16 * px + 1, v0: 12, v1: 12 + 16 * px, px, text: t }]; } }
       if (kind === 'gap') { // side alley: low far wall, and a house behind
-        Object.assign(seg, { h: 8 + r() * 6, mat: 'block' });
+        Object.assign(seg, { h: 8 + r() * 6, mat: 'block', rd: 1.5 });
         out[sd].push(seg, { z0: z, z1, w: w + 6, h: 30 + r() * 14, mat: pick(['cement', 'teal']), seed: sg + 1, feat: [{ k: 'win', u0: z + 2, u1: z + 6, v0: 16, v1: 22, lit: r() < 0.2, bars: 1 }] });
         prevW = w; z = z1; n++; continue;
       }
       if (kind === 'wall') {
-        Object.assign(seg, { h: 17 + r() * 5, mat: o.mats ? ({ brick: 'brick', block: 'block', cement: 'cement' }[nextMat('block')] || 'cement') : r() < 0.6 ? 'block' : 'cement' });
+        Object.assign(seg, { rd: 1.5, h: 17 + r() * 5, mat: o.mats ? ({ brick: 'brick', block: 'block', cement: 'cement' }[nextMat('block')] || 'cement') : r() < 0.6 ? 'block' : 'cement' });
         if (r() < 0.6) { const g0 = z + 3 + r() * (len - 15); seg.feat.push({ k: 'gate', u0: g0, u1: g0 + 9 + r() * 3, v0: 0, v1: 14 + r() * 2 }, { k: 'plate', u0: g0 + 12.5, u1: g0 + 14.5, v0: 11, v1: 13 }); }
         // house behind the wall
         out[sd].push({ z0: z, z1, w: w + 7, h: 32 + r() * 16, mat: nextMat(pick(['teal', 'cement', 'brick'])), seed: sg + 2, feat: r() < 0.7 ? [{ k: 'win', u0: z + 4, u1: z + 10, v0: 22, v1: 29, lit: r() < (o.litP || 0.12), curtain: 1, bars: r() < 0.5 }] : [] });
@@ -36,19 +36,19 @@ function alleyKit(seed, o = {}) {
         if (r() < 0.5) seg.feat.push({ k: 'cable', u0: z, u1: z1, v0: 21 + r() * 3, v1: 22.2 + r() * 3 });
       }
       if (r() < (o.ivyP !== undefined ? o.ivyP : 0.28)) seg.ivy = 1;
-      if (kind === 'wall' && r() < (o.treeP !== undefined ? o.treeP : 0.35)) out[sd].push(canopy(z, z1, w + 3, seg, sg));
+      if (kind === 'wall' && z > (o.treeZ || 45) && r() < (o.treeP !== undefined ? o.treeP : 0.35)) for (let L = 0; L < 3; L++) out[sd].push(canopy(z + L * 1.5, z1 - L * 1.5, w + 2.5 + L * 3.5, seg, sg + L * 13, 1 - L * 0.18)); // three leaf layers = a crown with depth
       out[sd].push(seg); prevW = w; z = z1; n++;
     }
   }
   return out;
 }
 // a crimson tree leaning over a wall: a ragged leaf plane above the coping
-function canopy(z0, z1, w, under, seed) {
-  const base = under.h - 2, h = 16 + hash(seed, 1, 3) * 12, zc = (z0 + z1) / 2, half = (z1 - z0) / 2 + 3;
-  return { z0: z0 - 3, z1: z1 + 3, w, h: base + h, rd: 0, noRoof: 1, seed: seed + 50, ivy: 0, mat: 'red', canopy: 1,
+function canopy(z0, z1, w, under, seed, k = 1) {
+  const base = under.h - 2 + (1 - k) * 4, h = (12 + hash(seed, 1, 3) * 8) * (0.7 + k * 0.3), zc = (z0 + z1) / 2, half = (z1 - z0) / 2 + 3;
+  return { z0: z0 - 3, z1: z1 + 3, w, h: base + h, rd: 0, noRoof: 1, noCap: 1, seed: seed + 50, ivy: 0, mat: 'red', canopy: 1,
     baseH: base, ch: h,
     cut(u, v) { const du = Math.abs(u - zc) / half, vv = (v - base) / h; if (vv < 0 || vv > 1) return true; const edge = 1 - du * du - (vv - 0.45) ** 2 * 1.6; return edge + (fbm(u * 0.35, v * 0.35, seed) - 0.5) * 0.9 < 0.05 || hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed) < 0.1; },
-    tex(r, u, v) { const vv = (v - base) / h, cl = hash(Math.floor(u / (TEX_CS * 2)), Math.floor(v / (TEX_CS * 2)), seed + 3); r.m = RM.red; r.s = 0.8 + vv * 2.0 + fbm(u * 0.3, v * 0.3, seed + 4) * 1.6 + (cl > 0.85 ? 0.6 : 0); if (cl < 0.1) { r.m = RM.dark; r.s = 1; } } };
+    tex(r, u, v) { const vv = (v - base) / h, cl = hash(Math.floor(u / (TEX_CS * 2)), Math.floor(v / (TEX_CS * 2)), seed + 3); r.m = RM.red; r.s = 0.8 + vv * 2.0 + fbm(u * 0.3, v * 0.3, seed + 4) * 1.6 + (cl > 0.85 ? 0.6 : 0) - (1 - k) * 1.2; if (cl < 0.1) { r.m = RM.dark; r.s = 1; } } };
 }
 // lamp head (projected), poles+wires zig-zagging along an alley
 function lampHead(b, ray, x, y, z, on) {
