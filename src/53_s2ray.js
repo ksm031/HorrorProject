@@ -6,7 +6,7 @@ const S2SC = {
     [-1]: [
       { z0: 2, z1: 40, w: 11, h: 21, mat: 'block', seed: 3, feat: [{ k: 'poster', u0: 15, u1: 19, v0: 7, v1: 13, seed: 1 }, { k: 'poster', u0: 19.5, u1: 22, v0: 8, v1: 12, seed: 3, red: 1 }, { k: 'gate', u0: 25, u1: 35, v0: 0, v1: 16 }, { k: 'plate', u0: 35.5, u1: 37.5, v0: 12, v1: 14 }] },
       { z0: 2, z1: 40, w: 19, top: 60, base: -50, h: 0, mat: 'teal', seed: 4, feat: [{ k: 'win', u0: 8, u1: 15, v0: 72, v1: 80, bars: 1 }, { k: 'win', u0: 24, u1: 31, v0: 74, v1: 82, bars: 1 }] },
-      { z0: 40, z1: 72, w: 9.5, ret: 19, h: 34, mat: 'cement', seed: 5, rfeat: [{ k: 'spray', u0: 9.8, u1: 18.8, v0: 22.4, v1: 28, px: 0.28, text: '철거' }, { k: 'spray', u0: 9.8, u1: 18.8, v0: 16, v1: 21.6, px: 0.28, text: '예정' }], feat: [{ k: 'pipe', u0: 66, u1: 67, v0: 0, v1: 34 }, { k: 'meter', u0: 41, u1: 43, v0: 10, v1: 13 }, { k: 'win', u0: 47, u1: 56, v0: 22, v1: 29, bars: 1 }] },
+      { z0: 40, z1: 72, w: 9.5, ret: 19, h: 34, mat: 'cement', seed: 5, rfeat: [{ k: 'spray', u0: 9.8, u1: 17.6, v0: 22.4, v1: 22.4 + 16 * 0.2424, px: 0.2424, text: '철거' }, { k: 'spray', u0: 9.8, u1: 17.6, v0: 17.4, v1: 17.4 + 16 * 0.2424, px: 0.2424, text: '예정' }], feat: [{ k: 'pipe', u0: 66, u1: 67, v0: 0, v1: 34 }, { k: 'meter', u0: 41, u1: 43, v0: 10, v1: 13 }, { k: 'win', u0: 47, u1: 56, v0: 22, v1: 29, bars: 1 }] },
       { z0: 72, z1: 112, w: 11, h: 27, mat: 'brick', seed: 6, feat: [{ k: 'door', u0: 80, u1: 86, v0: 0, v1: 13, mat: 'blue', lvl: 2.6 }, { k: 'poster', u0: 92, u1: 96, v0: 7, v1: 12, seed: 7 }] },
       { z0: 112, z1: 240, w: 10, ret: 11, h: 36, mat: 'teal', seed: 7, feat: [{ k: 'win', u0: 128, u1: 136, v0: 18, v1: 25, lit: 1, curtain: 1 }, { k: 'win', u0: 160, u1: 168, v0: 18, v1: 25 }] }
     ],
@@ -14,7 +14,7 @@ const S2SC = {
       { z0: 2, z1: 30, w: 11, h: 33, mat: 'cement', seed: 8, feat: [{ k: 'cable', u0: 0, u1: 30, v0: 22, v1: 23.4 }, { k: 'pipe', u0: 14, u1: 14.8, v0: 0, v1: 33 }, { k: 'meter', u0: 15.5, u1: 17.5, v0: 11, v1: 14 }, { k: 'meter', u0: 18, u1: 20, v0: 11, v1: 14 }, { k: 'sign', u0: 20.5, u1: 26, v0: 14, v1: 18 }, { k: 'poster', u0: 21, u1: 24, v0: 5, v1: 10, seed: 9 }, { k: 'poster', u0: 24.5, u1: 27, v0: 6, v1: 9.5, seed: 19, red: 1 }, { k: 'door', u0: 6, u1: 11, v0: 0, v1: 13, lvl: 2.8 }] },
       { z0: 30, z1: 50, w: 30, h: 9, mat: 'block', seed: 9 }, // side-alley opening: a low wall far back
       { z0: 30, z1: 50, w: 34, h: 40, mat: 'cement', seed: 10, feat: [{ k: 'win', u0: 36, u1: 42, v0: 16, v1: 22 }] },
-      { z0: 50, z1: 96, w: 10, ret: 34, h: 30, mat: 'teal', seed: 11, feat: [{ k: 'ac', u0: 56, u1: 62, v0: 14, v1: 18 }, { k: 'poster', u0: 66, u1: 70, v0: 6, v1: 11, seed: 12, red: 1 }, { k: 'poster', u0: 70.5, u1: 73, v0: 7, v1: 10, seed: 13 }, { k: 'win', u0: 78, u1: 86, v0: 18, v1: 24, bars: 1 }], rfeat: [{ k: 'spray', u0: 11, u1: 22, v0: 12, v1: 17.6, px: 0.35, text: '공가' }, { k: 'poster', u0: 24, u1: 27, v0: 6, v1: 11, seed: 15 }] },
+      { z0: 50, z1: 96, w: 10, ret: 34, h: 30, mat: 'teal', seed: 11, feat: [{ k: 'ac', u0: 56, u1: 62, v0: 14, v1: 18 }, { k: 'poster', u0: 66, u1: 70, v0: 6, v1: 11, seed: 12, red: 1 }, { k: 'poster', u0: 70.5, u1: 73, v0: 7, v1: 10, seed: 13 }, { k: 'win', u0: 78, u1: 86, v0: 18, v1: 24, bars: 1 }], rfeat: [{ k: 'spray', u0: 11, u1: 20.7, v0: 12, v1: 12 + 16 * 0.303, px: 0.303, text: '공가' }, { k: 'poster', u0: 24, u1: 27, v0: 6, v1: 11, seed: 15 }] },
       { z0: 96, z1: 240, w: 11, ret: 10, h: 24, mat: 'block', seed: 12, feat: [{ k: 'gate', u0: 104, u1: 113, v0: 0, v1: 14 }] }
     ]
   },

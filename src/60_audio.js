@@ -119,9 +119,11 @@ function buildSoundEvents() {
     ev(a, 'relay'); ev(z, 'click', { v: 0.8, pan: 0.4 });
   }
   for (const g of S2_GHOST) ev(g[0] - 0.05, 'swell', { d: 1.4 });
-  // S3: the stop, cloth as she turns, a held breath — then it is there
-  ev(24.02, 'scuff', { pan: 0 }); for (const [a] of S3_TURN) ev(a, 'rustle');
-  for (let t = 25; t < 30; t += 2.1) ev(t, 'breath', { in: true, v: 0.4, d: 0.8 });
+  // S3: she walks up to the wall and stops; then its footfalls arrive behind her; cloth as she turns
+  for (let f = 0; f < (S3_STOP - 24) * 8; f++) if (f % 4 === 0) ev(24 + f / 8, 'step', { v: 0.9 });
+  ev(S3_STOP + 0.02, 'scuff', { pan: 0 }); for (const [a] of S3_TURN) ev(a, 'rustle');
+  for (let t = S3_IN[0]; t < S3_IN[1]; t += 0.5) ev(t, 'thud', { v: 0.3 + (t - S3_IN[0]) * 0.12 });
+  ev(S3_IN[1] + 0.3, 'breath', { in: true, v: 0.5, d: 0.9 });
   ev(S3_REVEAL, 'sting'); ev(33.0, 'cut'); ev(33.42, 'uncut'); ev(33.44, 'breath', { in: true, v: 2.2, d: 0.35 });
   // S4: running (12 fps, contact every 4th frame), breathing, flaps, the basin, lamps dying behind her, marks
   for (let f = 0; f < 15 * 12; f++) { const t = 33.5 + f / 12; if (f % 4 === 0) ev(t, 'step', { run: true }); if (f % 8 === 2) ev(t, 'breath', { in: f % 16 === 2, v: 1.2, d: 0.3 }); }

@@ -42,39 +42,51 @@ function shotOpen(t, lt) {
 
 /* ---------- S3: she stops at a wall — two shadows; she turns; it is there ---------- */
 const S3SC = {
-  f: 210, vx: 240, vy: 150, camY: 15, slope: 0, floorW: 40, noTerrace: 1, walls: { [-1]: [], [1]: [] },
+  f: 190, vx: 240, vy: 150, camY: 15, slope: 0, floorW: 40, noTerrace: 1, walls: { [-1]: [], [1]: [] },
   end: { z: 36, x0: -60, x1: 60, h: 60, mat: 'cement', seed: 71, lvl: 4.6, feat: [
     { k: 'pipe', u0: -27, u1: -26, v0: 0, v1: 60 }, { k: 'meter', u0: -25, u1: -23, v0: 13, v1: 16 }, { k: 'cable', u0: -60, u1: 60, v0: 30, v1: 30.9 },
-    { k: 'spray', u0: -24, u1: -1, v0: 16, v1: 21.4, px: 0.34, text: '출입금지' },
+    { k: 'spray', u0: -24.6, u1: 0, v0: 16, v1: 16 + 16 * 2 * 36 / 190, px: 2 * 36 / 190, text: '출입금지' },
     { k: 'poster', u0: 13, u1: 17, v0: 11, v1: 16.5, seed: 72, red: 1 }, { k: 'poster', u0: 17.4, u1: 20, v0: 12, v1: 15.5, seed: 73 }, { k: 'poster', u0: 14, u1: 17.6, v0: 6.5, v1: 10.5, seed: 74 }] }
 };
 S3SC.end.tex = (r, u, v, g, side, kind, ray) => wallTex(r, u, v, g, -1, kind, ray);
 const S3R = rayShot(S3SC);
-const S3_TURN = [[27.6, 0.18], [28.5, 0.36], [29.4, 0.6], [30.3, 0.86]];
+const S3_TURN = [[29.5, 0.18], [30.1, 0.36], [30.7, 0.6], [31.3, 0.86]];
 const S3_LAMP = { x: -24, y: 6, z: -60, r: 150, k: 3.4, air: 0 }; // a lamp further down the slope, low behind her
-const S3_REVEAL = 31.9;
+const S3_REVEAL = 31.9, S3_STOP = 25.9, S3_IN = [26.9, 29.1]; // she arrives; then it arrives
+const s3GirlZ = t => Math.min(11.5 + (t - 24) * 3.9, 11.5 + (S3_STOP - 24) * 3.9);
+function s3Ghost(t) { // where it is (plane z=10, behind us) and how it stands, as its shadow walks in from the right
+  if (t < S3_IN[0]) return null;
+  if (t < S3_IN[1]) { const q = Math.floor((t - S3_IN[0]) * 6) / 6; return { x: 46 - q * 14.4, pose: ghostGait('stride', step(t, 6)) }; }
+  const base = { ...GPOSE.lean, lean: 34, head: [10, 12], la: [30, 10, 6], ra: [8, 6, 0] };
+  const x = 46 - (S3_IN[1] - S3_IN[0]) * 14.4;
+  if (t < 30.7) return { x, pose: base };
+  if (t < 31.2) return { x, pose: { ...base, tilt: 70, head: [7, 12] } };
+  return { x, pose: { ...base, tilt: 70, head: [7, 12], la: [62, -30, 10] } };
+}
 function shotShadow(t, lt) {
-  const ray = S3R(), k = step(lt, ANIM);
-  const spread = k < 3 ? 1.2 : k < 6 ? 0.5 : 0, sway = [1.4, 1.0, -0.8, -0.5, 0.3, 0.1, 0][Math.min(6, k)];
+  const ray = S3R(), walking = t < S3_STOP, gz = s3GirlZ(t), k = step(t - S3_STOP, ANIM);
+  const ph = step(t, 8) % 8, lifts = [0, 0.35, 0.8, 0.35, 0, 0, 0, 0];
+  const spread = walking ? 0 : k < 3 ? 1.0 : k < 6 ? 0.4 : 0, sway = walking ? [0, 0.3, 0.5, 0.3, 0, -0.3, -0.5, -0.3][ph] : [1.2, 0.9, -0.7, -0.4, 0.25, 0.1, 0][Math.min(6, k)];
+  const lift = walking ? [lifts[ph], lifts[(ph + 4) % 8]] : [0, 0], arm = walking ? [0, 0.5, 1, 0.5, 0, -0.5, -1, -0.5][ph] : 0;
   let yaw = 0; for (const [a, v] of S3_TURN) if (t >= a) yaw = v;
-  const breath = (step(lt, 0.8) & 1) && yaw < 0.5 ? 1 : 0;
+  const breath = !walking && (step(t, 0.8) & 1) && yaw < 0.5 ? 1 : 0;
   ray.shadeK(fb, 's3', [S3_LAMP], -1.6, null, () => K0);
-  // cast shadows: test each lit point against the girl's and the thing's silhouettes on their planes
-  const gm = new PlaneMask(-8, 22, 16, 23, 10), hm = new PlaneMask(0, 44, 32, 46, 10);
-  { const [px, py] = gm.px(0, 0); girlBack(gm.b, px, py, { s: 10 * 16 / 47, yaw: yaw * 0.6, spread }); }
-  { const [px, py] = hm.px(12, 0), base = { ...GPOSE.lean, lean: 36, head: [10, 12], la: [30, 10, 6], ra: [8, 6, 0] }, pose = t >= 31.4 ? { ...base, tilt: 70, head: [7, 12], la: [62, -30, 10] } : t >= 30.8 ? { ...base, tilt: 70, head: [7, 12] } : base; drawGhost(hm.b, px, py, 10 * 34 / 104, pose, { eyes: 0, flip: true }); }
+  // cast shadows from the lamp behind: her silhouette on her plane, its silhouette on a plane behind the camera
+  const gm = new PlaneMask(-8, 22, 16, 23, 10), hm = new PlaneMask(-6, 48, 60, 50, 10), gh = s3Ghost(t);
+  { const [px, py] = gm.px(0, 0); girlBack(gm.b, px, py, { s: 10 * 16 / 47, yaw: yaw * 0.6, spread, lift, arm }); }
+  if (gh) { const [px, py] = hm.px(gh.x, 0); drawGhost(hm.b, px, py, 10 * 34 / 104, gh.pose, { eyes: 0, flip: true, ash: false }); }
   const L = S3_LAMP;
   for (let i = 0; i < W * H; i++) {
     const z = ray.z[i]; if (z > 1e8) continue;
     const X = ray.px[i], Y = ray.py[i];
     let sh = 0;
-    for (const [m, zp] of [[gm, 22], [hm, 10]]) { const tt = (zp - L.z) / (z - L.z); if (tt <= 0 || tt >= 1) continue; if (m.at(L.x + (X - L.x) * tt, L.y + (Y - L.y) * tt)) sh++; }
+    for (const [m, zp] of [[gm, gz], [hm, 10]]) { if (m === hm && !gh) continue; const tt = (zp - L.z) / (z - L.z); if (tt <= 0 || tt >= 1) continue; if (m.at(L.x + (X - L.x) * tt, L.y + (Y - L.y) * tt)) sh++; }
     if (sh) { let c = fb.d[i]; c = DN[DN[DN[c]]]; if (sh > 1) c = DN[c]; fb.d[i] = c; }
   }
-  // the girl, close, from behind
-  const [sx, sy] = ray.project(0, 0, 22), gb = new Buf(W, H);
-  girlBack(gb, ri(sx), ri(sy), { s: 16 * S3SC.f / 22 / 47, yaw, spread, sway, breath });
-  volumize(gb, 2); litSprite(fb, gb, ray.light([S3_LAMP], -1.4, 0, 10, 22) + 0.4);
+  // the girl: walks in, stops, stands
+  const [sx, sy] = ray.project(0, 0, gz), gb = new Buf(W, H);
+  girlBack(gb, ri(sx), ri(sy), { s: Math.round(16 * S3SC.f / gz / 47 / 0.04) * 0.04, yaw, spread, sway, breath, lift, arm });
+  litSprite(fb, gb, ray.light([S3_LAMP], -1.4, 0, 10, gz) + 0.4);
 }
 
 /* ---------- the reveal: one hard cut, three keys — the face opens ---------- */
@@ -287,7 +299,7 @@ const S6S = { f: 230, vx: 240, vy: 150, camY: 10, slope: 0.05, floorW: 10,
   walls: { [-1]: alleyKit(601, { z0: 3, z1: 62, w: 10, spray: [] })[-1], [1]: [
     { z0: 3, z1: 40, w: 10, h: 30, mat: 'cement', seed: 602, feat: [{ k: 'poster', u0: 10, u1: 13, v0: 6, v1: 11, seed: 3 }, { k: 'meter', u0: 20, u1: 22, v0: 10, v1: 13 }] },
     { z0: 40, z1: 62, w: 10, h: 26, mat: 'block', seed: 603, feat: [{ k: 'gate', u0: 44, u1: 54, v0: 0, v1: 15 }, { k: 'plate', u0: 55, u1: 57, v0: 11, v1: 13 }] }] },
-  end: { z: 60, x0: -12, x1: 12, h: 44, mat: 'cement', seed: 604, lvl: 4.8, feat: [{ k: 'spray', u0: -9, u1: 6, v0: 22, v1: 27.5, px: 0.34, text: '철거' }, { k: 'spray', u0: -7, u1: 8, v0: 14, v1: 19.5, px: 0.34, text: '예정' }] }
+  end: { z: 60, x0: -12, x1: 12, h: 44, mat: 'cement', seed: 604, lvl: 4.8, feat: [{ k: 'spray', u0: -9, u1: 8, v0: 22, v1: 22 + 16 * 2 * 60 / 230, px: 2 * 60 / 230, text: '철거' }, { k: 'spray', u0: -7, u1: 10, v0: 12.6, v1: 12.6 + 16 * 2 * 60 / 230, px: 2 * 60 / 230, text: '예정' }] }
 };
 S6S.end.tex = (r, u, v, g, side, kind, ray) => { wallTex(r, u, v, g, -1, kind, ray); const d = Math.hypot(u - 6.5, v - 8); if (Math.abs(d - 3) < 0.45 || (d < 3 && (Math.abs((u - 6.5) - (v - 8)) < 0.4 || Math.abs((u - 6.5) + (v - 8)) < 0.4))) { r.m = RM.red; r.s = 3.2; } };
 const S6R = rayShot(S6S);

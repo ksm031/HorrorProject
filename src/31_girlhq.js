@@ -32,7 +32,12 @@ function girlRender(b, cx, fy, o, front) {
   const x0 = Math.floor(cx - 9 * s), x1 = Math.ceil(cx + 9 * s), y0 = Math.floor(fy - 48.5 * s), y1 = Math.ceil(fy + 1.5 * s);
   const tmp = new Buf(x1 - x0 + 1, y1 - y0 + 1); tmp.hq = true;
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    const u = (x + 0.5 - cx) / s, v = (y + 0.5 - fy) / s; let c = T, n;
+    // figure space → part space: a smaller head and longer legs than the original chibi-ish build (≈1:6.3)
+    const fu = (x + 0.5 - cx) / s, fv = (y + 0.5 - fy) / s; let u, v;
+    if (fv <= -39.7) { v = -37.0 + (fv + 39.7) / 0.7; u = fu / 0.75; }           // head: ~70% the size
+    else if (fv <= -15.4) { v = -13 + (fv + 15.4) * (24 / 24.3); u = fu / 0.95; } // torso + skirt, a touch slimmer
+    else { v = fv * (13 / 15.4); u = fu / 0.97; }                                // legs: longer
+    let c = T, n;
     // ---------- head ----------
     const hu = u - hx, hv = v - (v < -41 ? hy : hy * 0.4), inHead = v < -36.4;
     const hem = -37.2 + Math.sin(hu * 2.4) * 0.18 + (fine ? (hash(Math.floor(hu * 2.5), 0, 9) - 0.5) * 0.35 : 0);

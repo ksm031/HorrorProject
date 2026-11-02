@@ -129,6 +129,10 @@ function ghostGait(kind, f, reach = 0) {
     la: [9 + swLag * 6 + reach * 30, -4 - reach * 20, 12], ra: [9 - swLag * 6, -4, 12],
     ll: [5, 3], rl: [5, 3], lift: [lift(0), lift(Math.PI)]
   };
+  if (kind === 'stride') { // seen side-on: long legs swinging, a little stoop, arms swinging late and loose
+    const h1 = Math.sin(a) * 24, h2 = -h1, k1 = 6 + lift(Math.PI / 2) * 40, k2 = 6 + lift(-Math.PI / 2) * 40;
+    return { lean: 12, head: [9, 6], tilt: 14, la: [-swLag * 22 + reach * 60, 14 + reach * 10, 10], ra: [swLag * 22, 14, 10], ll: [h1, k1], rl: [h2, k2] };
+  }
   if (kind === 'crawl') return { // on all fours, from behind: torso foreshortened toward the ground, hands planted ahead
     front: 1, tk: 0.5, lean: sw * 3, head: [1, 13], tilt: 36 + sw * 6, sx: sw * 1.2,
     la: [26 + lift(0) * 10 + reach * 30, 22 - lift(0) * 24, 28], ra: [26 + lift(Math.PI) * 10, 22 - lift(Math.PI) * 24, 28],
