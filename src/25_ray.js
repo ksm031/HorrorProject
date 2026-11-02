@@ -96,6 +96,12 @@ class Ray {
     }
   }
   // per-frame: lights [{x,y,z,r,k}], fog {z0,z1,ramp,lvl}, amb
+  // memoised shading: scenes whose lights only switch between a few states reuse their frames
+  shadeK(out, key, lights, amb, fog, skyFn) {
+    this.memo = this.memo || new Map(); let m = this.memo.get(key);
+    if (!m) { this.shade(out, lights, amb, fog, skyFn); m = out.d.slice(); if (this.memo.size > 40) this.memo.clear(); this.memo.set(key, m); return; }
+    out.d.set(m);
+  }
   shade(out, lights, amb, fog, skyFn) {
     const NX = [0, 1, -1, 0, 0], NY = [1, 0, 0, 0, -1], NZ = [0, 0, 0, -1, 0], sc = this.sc, cy = sc.camY;
     const airL = lights.filter(L => L.k && L.air !== 0);

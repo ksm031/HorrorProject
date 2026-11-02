@@ -159,7 +159,7 @@ function girlSide(b, name, f, x, y, flip = false, map = null) {
 
 /* ---- back view: scalable, same proportions (unit = 1px at 46px height) ----
    o: {s:scale, yaw:0..1 head turn to her right, up:0..1 look up, breath:0/1, sway:-1..1 hair/pack lag} */
-function girlBack(b, cx, fy, o) {
+function girlBackFlat(b, cx, fy, o) {
   const s = o.s, yaw = o.yaw || 0, up = o.up || 0, br = o.breath || 0, sw = o.sway || 0;
   const X = u => cx + u * s, Y = u => fy + u * s;
   const pg = (pts, c) => poly(b, pts.map(q => [X(q[0]), Y(q[1])]), c);
@@ -267,6 +267,7 @@ const TINY = [
 // form shading for flat-filled sprites: each horizontal run of one colour gets a darker
 // edge on both sides (light from the camera side) and a darker last row (core shadow)
 function volumize(b, strength = 1) {
+  if (b.hq) return; // the shaded renderer already models form
   const d = b.d, w = b.w, out = d.slice();
   for (let y = 0; y < b.h; y++) {
     let x = 0;
@@ -283,7 +284,7 @@ function volumize(b, strength = 1) {
 }
 
 /* ---- front view (only ever small / far: walking home toward the camera, face in shadow) ---- */
-function girlFront(b, cx, fy, o) {
+function girlFrontFlat(b, cx, fy, o) {
   const s = o.s, X = u => cx + u * s, Y = u => fy + u * s;
   const pg = (pts, c) => poly(b, pts.map(q => [X(q[0]), Y(q[1])]), c);
   const lift = o.lift || [0, 0];

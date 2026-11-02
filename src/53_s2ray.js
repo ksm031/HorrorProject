@@ -62,7 +62,7 @@ function s2Lights(on) {
 const S2Buf = new Buf(W, H), S2RBuf = new Buf(W, H);
 function s2Base(t, on) {
   const ray = S2Ray(), sk = S2Sky();
-  ray.shade(fb, s2Lights(on), -1.3, { z0: 70, z1: 250, ramp: RM.sky, lvl: 3.2, max: 0.85 }, (x, y) => sk.d[y * W + x]);
+  ray.shadeK(fb, 's2' + on, s2Lights(on), -1.3, { z0: 70, z1: 250, ramp: RM.sky, lvl: 3.2, max: 0.85 }, (x, y) => sk.d[y * W + x]);
   // poles, wires, lamp heads (projected)
   const pA = pole3(fb, ray, -9.6, 44, 34), pB = pole3(fb, ray, 9.8, 104, 32);
   for (const [a, c, sg] of [[pA, pB, 6], [[pA[0] + 2, pA[1], pA[2]], [pB[0] - 2, pB[1] - 2, pB[2]], 9], [pA, [11, 30, 6], 5], [pA, [-11, 26, 3], 4], [pB, [-10, 48, 160], 10], [pB, [11, 40, 200], 6], [[-11, 30, 20], [11, 36, 28], 3], [[-11, 26, 96], [11, 31, 112], 2]])
@@ -91,7 +91,7 @@ function s2Girl(t, on) {
 // the convex mirror: reverse view, fisheye, flipped
 function s2Mirror(t, on, cx, cy, Rm) {
   const rr = S2RRay(), rs = S2RSky(), dark = !on;
-  rr.shade(S2RBuf, [{ x: -2, y: 26, z: 9, r: 50, k: on ? 3.6 : 0, air: 0.9 }], -2.2, { z0: 40, z1: 200, ramp: RM.dark, lvl: 2, max: 0.9 }, (x, y) => rs.d[y * W + x]);
+  rr.shadeK(S2RBuf, 'r' + on, [{ x: -2, y: 26, z: 9, r: 50, k: on ? 3.6 : 0, air: 0.9 }], -2.2, { z0: 40, z1: 200, ramp: RM.dark, lvl: 2, max: 0.9 }, (x, y) => rs.d[y * W + x]);
   if (on) { const [lx, ly] = rr.project(-2, 28, 9); R(S2RBuf, ri(lx) - 8, ri(ly) - 2, 16, 3, K1); R(S2RBuf, ri(lx) - 6, ri(ly) + 1, 12, 2, Y3); }
   const g = s2Ghost(t), black = S2_BLACK.some(([a, z]) => t >= a && t < z);
   const next = S2_GHOST.find(e => e[0] > t && e[0] - t < 0.15);

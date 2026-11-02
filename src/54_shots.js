@@ -27,7 +27,7 @@ const S1_LAMPS = [{ x: -8, z: 50, h: 26 }, { x: 8, z: 104, h: 24 }, { x: -8, z: 
 function shotOpen(t, lt) {
   const ray = S1R(), bk = S1Back(), g = S1SC.slope;
   const lights = S1_LAMPS.map(l => ({ x: l.x * 0.8, y: g * l.z + l.h - 1, z: l.z, r: 40, k: 2.6 }));
-  ray.shade(fb, lights, -1.2, FOG_DUSK, (x, y) => bk.d[y * W + x]);
+  ray.shadeK(fb, 's1', lights, -1.2, FOG_DUSK, (x, y) => bk.d[y * W + x]);
   for (const l of S1_LAMPS) lampHead(fb, ray, l.x, g * l.z + l.h, l.z, true);
   const poles = [[-10, g * 30 + 34, 30], [10, g * 80 + 34, 80], [-10, g * 128 + 32, 128], [10, g * 168 + 30, 168]];
   for (const p of poles) pole3(fb, ray, p[0], p[2], p[1] - g * p[2]);
@@ -58,7 +58,7 @@ function shotShadow(t, lt) {
   const spread = k < 3 ? 1.2 : k < 6 ? 0.5 : 0, sway = [1.4, 1.0, -0.8, -0.5, 0.3, 0.1, 0][Math.min(6, k)];
   let yaw = 0; for (const [a, v] of S3_TURN) if (t >= a) yaw = v;
   const breath = (step(lt, 0.8) & 1) && yaw < 0.5 ? 1 : 0;
-  ray.shade(fb, [S3_LAMP], -1.6, null, () => K0);
+  ray.shadeK(fb, 's3', [S3_LAMP], -1.6, null, () => K0);
   // cast shadows: test each lit point against the girl's and the thing's silhouettes on their planes
   const gm = new PlaneMask(-8, 22, 16, 23, 10), hm = new PlaneMask(0, 44, 32, 46, 10);
   { const [px, py] = gm.px(0, 0); girlBack(gm.b, px, py, { s: 10 * 16 / 47, yaw: yaw * 0.6, spread }); }
@@ -172,7 +172,7 @@ S4A.lamps = [130, 104, 78, 52].map((z, i) => ({ x: i % 2 ? 7.5 : -7.5, z, h: 24,
 function shotChaseA(t, lt) {
   const ray = S4AR(), g = S4AS.slope, sk = S2Sky();
   const lights = S4A.lamps.map(l => ({ x: l.x * 0.8, y: g * l.z + l.h - 1, z: l.z, r: 34, k: 3.0 * lampLife(l.die, t) }));
-  ray.shade(fb, lights, -1.7, FOG_DUSK, (x, y) => sk.d[y * W + x]);
+  ray.shadeK(fb, 'a' + lights.map(l => l.k).join(), lights, -1.7, FOG_DUSK, (x, y) => sk.d[y * W + x]);
   S4A.lamps.forEach((l, i) => lampHead(fb, ray, l.x, g * l.z + l.h, l.z, lights[i].k > 0));
   for (const [lz, items] of [[52, [{ t: 0.2, k: 'shirt', c: G4, p: 0 }, { t: 0.5, k: 'towel', c: R3, p: 2 }, { t: 0.75, k: 'pants', c: T3, p: 1 }]], [96, [{ t: 0.3, k: 'shirt', c: WH, p: 3 }, { t: 0.62, k: 'towel', c: G3, p: 1 }]]]) {
     const [a0, b0] = ray.project(-10, g * lz + 24, lz), [a1, b1] = ray.project(10, g * lz + 25, lz), near = Math.abs(s4aZ(t) - lz) < 14;
@@ -196,7 +196,7 @@ const s4bGirl = z => S4B.a + (z + 6 - S4B.z0) / S4B.v;
 function shotChaseB(t, lt) {
   const ray = S4BR(), g = S4BS.slope;
   const lights = S4B.lamps.map(l => ({ x: l.x * 0.8, y: g * l.z + l.h - 1, z: l.z, r: 32, k: 3.0 * lampLife(s4bPass(l.z), t) }));
-  ray.shade(fb, lights, -1.6, { z0: 80, z1: 220, ramp: RM.dark, lvl: 1.5, max: 0.9 }, () => K0);
+  ray.shadeK(fb, 'b' + lights.map(l => l.k).join(), lights, -1.6, { z0: 80, z1: 220, ramp: RM.dark, lvl: 1.5, max: 0.9 }, () => K0);
   S4B.lamps.forEach((l, i) => lampHead(fb, ray, l.x, g * l.z + l.h, l.z, lights[i].k > 0));
   // the red rubber basin: she clips it — it tips, rolls, the water spreads (keyed)
   const bz = S4B.basin.z, bx = S4B.basin.x, hit = s4bGirl(bz - 6), bf = t < hit ? -1 : step(t - hit, 12);
@@ -219,7 +219,7 @@ const s4cZ = t => S4C.z0 + (t - S4C.a) * S4C.v, s4cPass = z => S4C.a + 0.6 + (z 
 function shotChaseC(t, lt) {
   const ray = S4CR(), g = S4CS.slope, sk = S2Sky();
   const lights = S4C.lamps.map(l => ({ x: l.x * 0.8, y: g * l.z + l.h - 1, z: l.z, r: 36, k: 3.0 * lampLife(s4cPass(l.z), t) }));
-  ray.shade(fb, lights, -1.8, FOG_DUSK, (x, y) => sk.d[y * W + x]);
+  ray.shadeK(fb, 'c' + lights.map(l => l.k).join(), lights, -1.8, FOG_DUSK, (x, y) => sk.d[y * W + x]);
   S4C.lamps.forEach((l, i) => lampHead(fb, ray, l.x, g * l.z + l.h, l.z, lights[i].k > 0));
   const poles = [[-9, g * 40 + 30, 40], [9, g * 90 + 30, 90]]; for (const p of poles) pole3(fb, ray, p[0], p[2], p[1] - g * p[2]); alleyWires(fb, ray, poles);
   girlRunAway(ray, lights, -1.8, 0.5, s4cZ(t), t);
@@ -346,7 +346,7 @@ function shotRoom(t, lt) {
   const on = t >= 70.0, img = t >= 70.9, beat = t >= 74.2;
   const lights = [];
   if (on) lights.push({ x: -13.5, y: 9, z: 25, r: beat ? 46 : 40, k: beat ? 3.6 : img ? 3.1 : 2.6, cone: false, air: 0.7, ar: 9 });
-  ray.shade(fb, lights, -2.4, null, () => K0);
+  ray.shadeK(fb, 'r' + lights.map(l => l.k + ',' + l.r).join(), lights, -2.4, null, () => K0);
   // the doorway: closed seams leak red; open shows the red alley and a swinging leaf
   const [dx0, dy0] = ray.project(S7_DOOR.x0, S7_DOOR.h, 50), [dx1, dy1] = ray.project(S7_DOOR.x1, 0, 50);
   if (open) {
