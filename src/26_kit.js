@@ -48,7 +48,7 @@ function canopy(z0, z1, w, under, seed) {
   return { z0: z0 - 3, z1: z1 + 3, w, h: base + h, rd: 0, noRoof: 1, seed: seed + 50, ivy: 0, mat: 'red', canopy: 1,
     baseH: base, ch: h,
     cut(u, v) { const du = Math.abs(u - zc) / half, vv = (v - base) / h; if (vv < 0 || vv > 1) return true; const edge = 1 - du * du - (vv - 0.45) ** 2 * 1.6; return edge + (fbm(u * 0.35, v * 0.35, seed) - 0.5) * 0.9 < 0.05 || hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed) < 0.1; },
-    tex(r, u, v) { const vv = (v - base) / h, cl = hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed + 3); r.m = RM.red; r.s = 1.2 + vv * 2.4 + cl * 1.6 + (fbm(u * 0.3, v * 0.3, seed + 4) - 0.5) * 1.4; if (cl < 0.14) { r.m = RM.dark; r.s = 1; } } };
+    tex(r, u, v) { const vv = (v - base) / h, cl = hash(Math.floor(u / (TEX_CS * 2)), Math.floor(v / (TEX_CS * 2)), seed + 3); r.m = RM.red; r.s = 0.8 + vv * 2.0 + fbm(u * 0.3, v * 0.3, seed + 4) * 1.6 + (cl > 0.85 ? 0.6 : 0); if (cl < 0.1) { r.m = RM.dark; r.s = 1; } } };
 }
 // lamp head (projected), poles+wires zig-zagging along an alley
 function lampHead(b, ray, x, y, z, on) {

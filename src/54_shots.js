@@ -6,7 +6,7 @@ const FOG_DUSK = { z0: 60, z1: 240, ramp: RM.sky, lvl: 3, max: 0.85 };
 function rayShot(sc) { return once(() => new Ray(sc)); }
 
 /* ---------- S1: from the top of the hill, looking down the alley at the city ---------- */
-const S1SC = { f: 290, vx: 240, vy: 64, camY: 30, slope: -0.13, floorW: 11, floorZ: 172, walls: alleyKit(101, { z0: 6, z1: 176, w: 11, litP: 0.12, spray: ['공가'], gapP: 0.2 }) };
+const S1SC = { f: 290, vx: 240, vy: 64, camY: 30, slope: -0.13, floorW: 11, floorZ: 172, walls: alleyKit(101, { z0: 6, z1: 176, w: 11, litP: 0.12, spray: ['공가'], gapP: 0.2, ivyP: 0.15, treeP: 0.2 }) };
 const S1R = rayShot(S1SC);
 const S1Back = once(() => { // beyond the hill: dusk, mountains, the living city below
   const b = new Buf(W, H, T1);

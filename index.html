@@ -791,7 +791,9 @@ function wallTex(r, u, v, g, side, kind, ray) {
   // red ivy (담쟁이) climbing the wall in clusters of leaves
   if (g.ivy) {
     const reach = fbm(u * 0.09, v * 0.05, seed + 20) + (1 - v / Math.max(8, top)) * 0.35 - 0.2;
-    if (reach > 0.5 && v > 0.5) { const cell = hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed + 21); if (cell > 0.22) { m = RM.red; s = 1.4 + cell * 2.2 + (reach - 0.5) * 2 + (v / top) * 0.8; } else if (cell > 0.12) { m = RM.dark; s = 1.2; } }
+    if (reach > 0.5 && v > 0.5) { // leaf clusters: shaded as masses (lit from above), few dark gaps — not per-pixel noise
+      const cs = TEX_CS * 2, cu = Math.floor(u / cs), cv = Math.floor(v / cs), cell = hash(cu, cv, seed + 21), mass = fbm(u * 0.35, v * 0.35, seed + 22);
+      if (cell > 0.1) { m = RM.red; s = 0.9 + mass * 2.2 + (reach - 0.5) * 1.5 + (cell > 0.85 ? 0.7 : 0); } else { m = RM.dark; s = 1.1; } }
   }
   r.m = m; r.s = s;
   const fl = kind === 2 ? g.rfeat : g.feat;
@@ -937,7 +939,7 @@ function canopy(z0, z1, w, under, seed) {
   return { z0: z0 - 3, z1: z1 + 3, w, h: base + h, rd: 0, noRoof: 1, seed: seed + 50, ivy: 0, mat: 'red', canopy: 1,
     baseH: base, ch: h,
     cut(u, v) { const du = Math.abs(u - zc) / half, vv = (v - base) / h; if (vv < 0 || vv > 1) return true; const edge = 1 - du * du - (vv - 0.45) ** 2 * 1.6; return edge + (fbm(u * 0.35, v * 0.35, seed) - 0.5) * 0.9 < 0.05 || hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed) < 0.1; },
-    tex(r, u, v) { const vv = (v - base) / h, cl = hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed + 3); r.m = RM.red; r.s = 1.2 + vv * 2.4 + cl * 1.6 + (fbm(u * 0.3, v * 0.3, seed + 4) - 0.5) * 1.4; if (cl < 0.14) { r.m = RM.dark; r.s = 1; } } };
+    tex(r, u, v) { const vv = (v - base) / h, cl = hash(Math.floor(u / (TEX_CS * 2)), Math.floor(v / (TEX_CS * 2)), seed + 3); r.m = RM.red; r.s = 0.8 + vv * 2.0 + fbm(u * 0.3, v * 0.3, seed + 4) * 1.6 + (cl > 0.85 ? 0.6 : 0); if (cl < 0.1) { r.m = RM.dark; r.s = 1; } } };
 }
 // lamp head (projected), poles+wires zig-zagging along an alley
 function lampHead(b, ray, x, y, z, on) {
@@ -1602,7 +1604,7 @@ const FOG_DUSK = { z0: 60, z1: 240, ramp: RM.sky, lvl: 3, max: 0.85 };
 function rayShot(sc) { return once(() => new Ray(sc)); }
 
 /* ---------- S1: from the top of the hill, looking down the alley at the city ---------- */
-const S1SC = { f: 290, vx: 240, vy: 64, camY: 30, slope: -0.13, floorW: 11, floorZ: 172, walls: alleyKit(101, { z0: 6, z1: 176, w: 11, litP: 0.12, spray: ['공가'], gapP: 0.2 }) };
+const S1SC = { f: 290, vx: 240, vy: 64, camY: 30, slope: -0.13, floorW: 11, floorZ: 172, walls: alleyKit(101, { z0: 6, z1: 176, w: 11, litP: 0.12, spray: ['공가'], gapP: 0.2, ivyP: 0.15, treeP: 0.2 }) };
 const S1R = rayShot(S1SC);
 const S1Back = once(() => { // beyond the hill: dusk, mountains, the living city below
   const b = new Buf(W, H, T1);

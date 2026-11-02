@@ -174,7 +174,9 @@ function wallTex(r, u, v, g, side, kind, ray) {
   // red ivy (담쟁이) climbing the wall in clusters of leaves
   if (g.ivy) {
     const reach = fbm(u * 0.09, v * 0.05, seed + 20) + (1 - v / Math.max(8, top)) * 0.35 - 0.2;
-    if (reach > 0.5 && v > 0.5) { const cell = hash(Math.floor(u / TEX_CS), Math.floor(v / TEX_CS), seed + 21); if (cell > 0.22) { m = RM.red; s = 1.4 + cell * 2.2 + (reach - 0.5) * 2 + (v / top) * 0.8; } else if (cell > 0.12) { m = RM.dark; s = 1.2; } }
+    if (reach > 0.5 && v > 0.5) { // leaf clusters: shaded as masses (lit from above), few dark gaps — not per-pixel noise
+      const cs = TEX_CS * 2, cu = Math.floor(u / cs), cv = Math.floor(v / cs), cell = hash(cu, cv, seed + 21), mass = fbm(u * 0.35, v * 0.35, seed + 22);
+      if (cell > 0.1) { m = RM.red; s = 0.9 + mass * 2.2 + (reach - 0.5) * 1.5 + (cell > 0.85 ? 0.7 : 0); } else { m = RM.dark; s = 1.1; } }
   }
   r.m = m; r.s = s;
   const fl = kind === 2 ? g.rfeat : g.feat;
